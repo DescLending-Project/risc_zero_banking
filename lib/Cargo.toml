@@ -1,0 +1,9 @@
+[workspace]
+members = [
+"integration-test",
+    "core/tlsn-verifier-core",
+     "core/merkle_verifier_core", "proofs/example_merkle_verify",
+    # "tlsn-risc0",
+    # "tlsn-risc0/methods",
+    # "tlsn-test-suite",
+]

@@ -1,0 +1,24 @@
+[package]
+name = "host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+methods = { path = "../methods" }
+risc0-zkvm = { version = "2.0.2"}
+
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Ethereum interactions
+ethers = { version = "2.0", features = ["ws", "rustls"] }
+ethereum-types = "0.14"
+
+# Utilities
+hex = "0.4"
+anyhow = "1.0"
+tokio = { version = "1.28", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+
+# Optional for parsing .env files with API keys
+dotenv = "0.15"
+risc0-build = "2.1.1"

@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["host", "methods"]
+
+# Always optimize; building and running the guest takes much longer without optimization.
+[profile.dev]
+opt-level = 3
+
+[profile.release]
+debug = 1
+lto = true
+
+
+# Pin to a specific version to avoid toolchain issues
+[workspace.dependencies]
+# Try an older, more stable version
+lib = {path="../../lib"}
+risc0-zkvm = "2.0.2"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+ethereum-types = "0.14"
+ethers = { version = "2.0", features = ["ws", "rustls"] }
