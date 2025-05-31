@@ -15,7 +15,7 @@ lto = true
 [workspace.dependencies]
 # Try an older, more stable version
 lib = {path="../../lib"}
-risc0-zkvm = "2.0.2"
+risc0-zkvm = { version = "2.0.2",features=["prove"]}
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 ethereum-types = "0.14"
 ethers = { version = "2.0", features = ["ws", "rustls"] }

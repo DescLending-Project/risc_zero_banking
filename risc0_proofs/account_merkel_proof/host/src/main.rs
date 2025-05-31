@@ -1,7 +1,13 @@
 use anyhow::{Context, Result};
+use bincode;
 use ethereum_types::{H256, U256};
 use ethers::prelude::*;
-use risc0_zkvm::{default_executor, default_prover, serde::from_slice, ExecutorEnv};
+use risc0_groth16::docker::stark_to_snark;
+use risc0_zkvm::Prover;
+use risc0_zkvm::{
+    default_executor, default_prover, serde::from_slice, ExecutorEnv, ProverOpts, Receipt,
+    ReceiptKind,
+};
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::env;
@@ -140,10 +146,17 @@ async fn main() -> Result<()> {
 
     let prover = default_prover();
     // Pass the ELF bytes
-    let receipt_info = prover.prove(prove_env, &elf_bytes)?;
+    let opts = ProverOpts::default().with_receipt_kind(ReceiptKind::Succinct);
+    let receipt_info = prover.prove_with_opts(prove_env, &elf_bytes, &opts)?;
 
     // Access the receipt field within ProveInfo
     let receipt = &receipt_info.receipt;
+
+    // storing receipt as bincode and json
+    let serialized_receipt = bincode::serialize(&receipt)?;
+    std::fs::write("complete_receipt.bin", serialized_receipt)?;
+    let receipt_json = serde_json::to_string_pretty(&receipt)?;
+    std::fs::write("receipt.json", receipt_json)?;
 
     // Verify the proof - use the receipt field
     println!("Verifying ZK proof...");
