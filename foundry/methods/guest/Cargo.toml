@@ -1,0 +1,28 @@
+[package]
+name = "guests"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "merkel"
+path = "src/bin/merkel.rs"
+
+[workspace]
+
+[dependencies]
+alloy-primitives = { version = "1.0", default-features = false, features = ["rlp", "serde", "std"] }
+alloy-sol-types = { version = "1.0" }
+# RISC Zero guest SDK
+risc0-zkvm = { version = "2.0.2", default-features = false, features = ["std"] }
+# merkle_verifier_core = { path = "../../../../../../lib/core/merkle_verifier_core",default-features = false }
+merkle_verifier_core = { path = "../../../lib/core/merkle_verifier_core",default-features = false }
+
+# Core dependencies (compatible with no_std)
+sha3 = { version = "0.10", default-features = false }
+ethereum-types = { version = "0.14", default-features = false, features = ["serialize", "rlp"] }
+rlp = { version = "0.5", default-features = false }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+
+[profile.release]
+lto = "thin"
