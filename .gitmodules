@@ -1,0 +1,3 @@
+[submodule "risc0_proofs/tlsn-verifier"]
+	path = risc0_proofs/tlsn-verifier
+	url = https://github.com/skrakra/risc0-tlsn-verifier.git
