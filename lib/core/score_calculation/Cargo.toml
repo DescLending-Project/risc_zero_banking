@@ -1,0 +1,31 @@
+[package]
+name = "score_calculation"
+version = "0.1.0"
+edition = "2021"
+description = "FICO-inspired credit scoring system for decentralized finance"
+
+[dependencies]
+# Serialization support for RISC Zero
+serde = { version = "1.0", features = ["derive"] }
+
+# RISC Zero dependencies (uncomment when integrating with RISC Zero)
+# risc0-zkvm = { version = "0.20", default-features = false, features = ["std"] }
+# risc0-zkvm-platform = "0.20"
+
+[dev-dependencies]
+# For testing
+serde_json = "1.0"
+
+[lib]
+name = "score_calculation"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std = ["serde/std"]
+
+# RISC Zero specific features (uncomment when needed)
+# risc0 = ["risc0-zkvm", "risc0-zkvm-platform"]
+
+
+# Specific profile for RISC Zero guest programs
