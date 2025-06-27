@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Ethereum interactions
+merkle_verifier_core ={ path="../merkle_verifier_core/"}
 ethers = { version = "2.0", features = ["ws", "rustls"] }
 ethereum-types = "0.14"
 anyhow = "1.0"
