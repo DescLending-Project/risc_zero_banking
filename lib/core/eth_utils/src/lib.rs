@@ -10,7 +10,7 @@ use ethers::{
 use std::env;
 use std::str::FromStr;
 
-use merkle_verifier_core::fetch_merkle_proofs::{MerkleProofFetcher, UserHistoryProof};
+use fetch_merkle::{MerkleProofFetcher, UserHistoryProof};
 
 use serde::{Deserialize, Serialize};
 use std::fs;

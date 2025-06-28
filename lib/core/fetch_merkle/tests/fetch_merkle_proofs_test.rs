@@ -5,8 +5,9 @@ mod tests {
         providers::{Http, Middleware, Provider},
         utils::keccak256,
     };
-    use merkle_verifier_core::fetch_merkle_proofs::*;
-    use std::{str::FromStr, vec};
+    use std::str::FromStr;
+
+    use fetch_merkle::*;
     #[tokio::test]
     async fn fetch_and_store_data() {
         let fetcher = MerkleProofFetcher::new("http://localhost:8545", None).unwrap();

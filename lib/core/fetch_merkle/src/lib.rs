@@ -4,7 +4,7 @@ use ethers::{
     utils::keccak256,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{str::FromStr, vec};
 use tokio;
 
@@ -256,7 +256,7 @@ impl MerkleProofFetcher {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configuration
     let rpc_url = "http://localhost:8545"; // Anvil default
-                                           // lending contract address 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+    // lending contract address 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
     let contract_address = Address::from_str("0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512")?;
     // placeholder lending contract will create history for 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
     let user_address = Address::from_str("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")?; // Default Anvil account
