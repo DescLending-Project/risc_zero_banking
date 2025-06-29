@@ -27,7 +27,7 @@ pub struct AnvilAccountsData {
     pub accounts: Vec<AnvilAccount>,
 }
 
-enum Node {
+pub enum Node {
     Anvil,
     Alchemy,
     Eth_Archive,
@@ -226,36 +226,36 @@ pub async fn get_user_complete_history(
     return Ok(complete_user_data);
 }
 
-pub async fn get_account_merkle_proof(
-    provider: Provider<Http>,
-    account_address: Address,
-    block: BlockId,
-) -> Result<EIP1186ProofResponse> {
-    // Address we want to verify
-
-    // Optional storage slot
-    let slot = Some(H256::zero()); // Example: first storage slot
-
-    println!("Getting block details for block: {:?}", block);
-    let block_data = provider
-        .get_block(block)
-        .await?
-        .context("Block not found")?;
-
-    let state_root = block_data.state_root;
-    println!("Got state root: 0x{}", hex::encode(state_root.as_bytes()));
-
-    println!(
-        "Getting proof for address: {} at block: {:?}",
-        account_address, block
-    );
-
-    // Fetch the proof from the Ethereum node using eth_getProof
-    let mut proof = provider
-        .get_proof(account_address, vec![slot.unwrap_or_default()], None)
-        .await?;
-
-    println!("Got proof, account has balance: {}", proof.balance);
-
-    return Ok(proof);
-}
+// pub async fn get_account_merkle_proof(
+//     provider: Provider<Http>,
+//     account_address: Address,
+//     block: BlockId,
+// ) -> Result<EIP1186ProofResponse> {
+//     // Address we want to verify
+//
+//     // Optional storage slot
+//     let slot = Some(H256::zero()); // Example: first storage slot
+//
+//     println!("Getting block details for block: {:?}", block);
+//     let block_data = provider
+//         .get_block(block)
+//         .await?
+//         .context("Block not found")?;
+//
+//     let state_root = block_data.state_root;
+//     println!("Got state root: 0x{}", hex::encode(state_root.as_bytes()));
+//
+//     println!(
+//         "Getting proof for address: {} at block: {:?}",
+//         account_address, block
+//     );
+//
+//     // Fetch the proof from the Ethereum node using eth_getProof
+//     let mut proof = provider
+//         .get_proof(account_address, vec![slot.unwrap_or_default()], None)
+//         .await?;
+//
+//     println!("Got proof, account has balance: {}", proof.balance);
+//
+//     return Ok(proof);
+// }

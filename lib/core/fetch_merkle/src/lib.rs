@@ -1,5 +1,5 @@
 use ethers::{
-    core::types::{Address, EIP1186ProofResponse, H256, U256},
+    core::types::{Address, BlockId, EIP1186ProofResponse, H256, U256},
     providers::{Http, Middleware, Provider},
     utils::keccak256,
 };
@@ -135,9 +135,29 @@ impl MerkleProofFetcher {
             successful_payments: U256::from_big_endian(payments.as_bytes()),
         })
     }
+    /// Fetch merkle proofs of provided user_accoutn using eth_getProof
+    pub async fn fetch_account_merkle_proof(
+        &self,
+        account_address: Address,
+        block: BlockId,
+    ) -> Result<EIP1186ProofResponse, Box<dyn std::error::Error>> {
+        // let response: Value = self.provider.request("eth_getProof", Some(params)).await?;
+        // Optional storage slot
+        let slot = Some(H256::zero()); // Example: first storage slot
+        println!("Getting block details for block: {:?}", block);
+        let block_data = self.provider.get_block(block).await?;
+        //
+        let response: EIP1186ProofResponse = self
+            .provider
+            .get_proof(account_address, vec![slot.unwrap_or_default()], None)
+            .await?;
+
+        println!("{}", serde_json::to_string_pretty(&response).unwrap());
+        Ok(response)
+    }
 
     /// Fetch merkle proofs using eth_getProof
-    pub async fn fetch_merkle_proof(
+    pub async fn fetch_lending_merkle_proof(
         &self,
         contract_address: Address,
         user_address: Address,
@@ -186,7 +206,7 @@ impl MerkleProofFetcher {
 
         // Fetch merkle proofs
         let merkle_proof = self
-            .fetch_merkle_proof(contract_address, user_address)
+            .fetch_lending_merkle_proof(contract_address, user_address)
             .await?;
 
         // Get current block number
