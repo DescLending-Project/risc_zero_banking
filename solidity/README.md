@@ -13,7 +13,7 @@ lib/risc0-ethereum
 First, start Anvil in a separte Shell to get the env vars
 ```shell
 anvil
-```shell
+```
 copy the env vars from anvil and export in your other shell
 ```shell
 export CONTRACT_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
