@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
 
     // storing receipt as bincode and json
     let serialized_receipt = bincode::serialize(&receipt)?;
-    std::fs::write("complete_receipt.bin", serialized_receipt)?;
+    std::fs::write("test_receipt.bin", serialized_receipt)?;
     let receipt_json = serde_json::to_string_pretty(&receipt)?;
     std::fs::write("receipt.json", receipt_json)?;
 

@@ -7,9 +7,6 @@
 [submodule "solidity/risc0-ethereum"]
 	path = solidity/risc0-ethereum
 	url = https://github.com/risc0/risc0-ethereum
-[submodule "risc0-ethereum"]
-	path = risc0-ethereum
-	url = https://github.com/risc0/risc0-ethereum
 [submodule "solidity/lib/risc0-ethereum"]
 	path = solidity/lib/risc0-ethereum
 	url = https://github.com/risc0/risc0-ethereum
