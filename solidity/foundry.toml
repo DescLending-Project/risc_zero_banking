@@ -1,0 +1,11 @@
+[profile.default]
+src = "contracts"
+out = "out"
+libs = ["lib"]
+ffi = true
+remappings = [
+    "forge-std=lib/forge-std/src/",
+    "risc0=lib/risc0-ethereum/contracts/src/",
+    "openzeppelin=lib/openzeppelin-contracts/"
+]
+fs_permissions = [{ access = "read-write", path = "./"}]
