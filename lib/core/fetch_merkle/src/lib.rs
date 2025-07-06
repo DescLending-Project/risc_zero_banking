@@ -1,8 +1,10 @@
 use ethers::{
-    core::types::{Address, BlockId, EIP1186ProofResponse, H256, U256},
+    core::types::{Address, BlockId, H256, U256},
     providers::{Http, Middleware, Provider},
+    types::EIP1186ProofResponse,
     utils::keccak256,
 };
+use merkle_verifier_core::merkle_patricia::{AccountMerkleProof, StorageMerkleProof};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{str::FromStr, vec};
@@ -30,7 +32,9 @@ pub struct UserHistoryProof {
     pub block_number: String,
     pub user_history: UserHistory,
     pub storage_slots: Vec<StorageSlot>,
-    pub merkle_proof: EIP1186ProofResponse,
+    pub state_root: H256,
+    pub contract_merkle_proof: AccountMerkleProof,
+    pub storage_merkle_proofs: Vec<StorageMerkleProof>,
     pub metadata: ProofMetadata,
 }
 
@@ -86,21 +90,38 @@ impl MerkleProofFetcher {
     }
 
     /// Calculate storage slots for UserHistory struct fields
-    pub fn calculate_struct_slots(&self, base_slot: H256) -> [H256; 3] {
+    /// NOTE: This needs to be adjusted to the contract structure for now it assumes following
+    /// user_history strcut from lending.sol contrat that can be found in foundry folder
+    ///contract Lending{
+    // mapping(address => UserHistory) public users;
+    // uint256 history = 2;
+    // struct UserHistory{
+    //   uint256 firstInteractionTimestamp;
+    //   uint256 liquidations;
+    //   uint256 succesfullPayments;
+    //   uint256 curentTotalDept;
+    // }}
+
+    ///
+    pub fn calculate_struct_slots(&self, base_slot: H256) -> [H256; 4] {
         let base_u256 = U256::from_big_endian(base_slot.as_bytes());
 
         let slot1 = base_u256 + U256::one();
         let slot2 = base_u256 + U256::from(2);
+        let slot3 = base_u256 + U256::from(3);
 
         let mut slot1_bytes = [0u8; 32];
         let mut slot2_bytes = [0u8; 32];
+        let mut slot3_bytes = [0u8; 32];
         slot1.to_big_endian(&mut slot1_bytes);
         slot2.to_big_endian(&mut slot2_bytes);
+        slot3.to_big_endian(&mut slot3_bytes);
 
         [
             base_slot,               // firstInteractionTimestamp
             H256::from(slot1_bytes), // liquidations
             H256::from(slot2_bytes), // successfulPayments
+            H256::from(slot3_bytes), // total_dept
         ]
     }
 
@@ -109,6 +130,7 @@ impl MerkleProofFetcher {
         &self,
         contract_address: Address,
         user_address: Address,
+        block: BlockId,
     ) -> Result<UserHistory, Box<dyn std::error::Error>> {
         let mapping_slot = U256::zero(); //NOTE: here it is assumed that  users mapping is at slot 0 of the contratc. TODO: THis should be dynamicly set!
         let base_slot = self.calculate_mapping_slot(user_address, mapping_slot);
@@ -118,15 +140,19 @@ impl MerkleProofFetcher {
 
         let timestamp = self
             .provider
-            .get_storage_at(contract_address, struct_slots[0], None)
+            .get_storage_at(contract_address, struct_slots[0], Some(block))
             .await?;
         let liquidations = self
             .provider
-            .get_storage_at(contract_address, struct_slots[1], None)
+            .get_storage_at(contract_address, struct_slots[1], Some(block))
             .await?;
         let payments = self
             .provider
-            .get_storage_at(contract_address, struct_slots[2], None)
+            .get_storage_at(contract_address, struct_slots[2], Some(block))
+            .await?;
+        let total_dept = self
+            .provider
+            .get_storage_at(contract_address, struct_slots[3], Some(block))
             .await?;
 
         Ok(UserHistory {
@@ -135,8 +161,44 @@ impl MerkleProofFetcher {
             successful_payments: U256::from_big_endian(payments.as_bytes()),
         })
     }
-    /// Fetch merkle proofs of provided user_accoutn using eth_getProof
-    pub async fn fetch_account_merkle_proof(
+    pub fn convert_res_to_storage_proofs(
+        &self,
+        proof_response: &EIP1186ProofResponse,
+        state_root: H256,
+    ) -> Vec<StorageMerkleProof> {
+        let mut storage_proofs = vec![];
+        for proof in proof_response.storage_proof.clone().into_iter() {
+            let pr = StorageMerkleProof {
+                state_root: state_root.clone(),
+                key: proof.key.into(),
+                storage_proof: proof
+                    .proof
+                    .clone()
+                    .into_iter()
+                    .map(|bytes| bytes.to_vec())
+                    .collect(),
+            };
+            storage_proofs.push(pr);
+        }
+        storage_proofs
+    }
+    pub fn convert_res_to_account_proof(
+        &self,
+        proof_response: &EIP1186ProofResponse,
+        state_root: H256,
+    ) -> AccountMerkleProof {
+        AccountMerkleProof {
+            state_root: state_root,
+            address: proof_response.address.into(),
+            account_proof: proof_response
+                .account_proof
+                .clone()
+                .into_iter()
+                .map(|bytes| bytes.to_vec())
+                .collect(),
+        }
+    }
+    pub async fn fetch_eip(
         &self,
         account_address: Address,
         block: BlockId,
@@ -153,26 +215,55 @@ impl MerkleProofFetcher {
             .await?;
 
         println!("{}", serde_json::to_string_pretty(&response).unwrap());
+        let block_data = self.provider.get_block(block).await?.unwrap();
+
+        let state_root = block_data.state_root;
+        println!("Got state root: 0x{}", hex::encode(state_root.as_bytes()));
         Ok(response)
     }
 
-    /// Fetch merkle proofs using eth_getProof
-    pub async fn fetch_lending_merkle_proof(
+    pub async fn fetch_account_merkle_proof(
+        &self,
+        account_address: Address,
+        block: BlockId,
+    ) -> Result<AccountMerkleProof, Box<dyn std::error::Error>> {
+        // let response: Value = self.provider.request("eth_getProof", Some(params)).await?;
+        // Optional storage slot
+        let slot = Some(H256::zero()); // Example: first storage slot
+        println!("Getting block details for block: {:?}", block);
+        let block_data = self.provider.get_block(block).await?.unwrap();
+        let state_root = block_data.state_root;
+        println!("Got state root: 0x{}", hex::encode(state_root.as_bytes()));
+        //
+        let response: EIP1186ProofResponse = self
+            .provider
+            .get_proof(account_address, vec![slot.unwrap_or_default()], Some(block))
+            .await?;
+
+        println!("{}", serde_json::to_string_pretty(&response).unwrap());
+        Ok(self.convert_res_to_account_proof(&response, state_root))
+    }
+    pub async fn fetch_whole_EIP_proof(
         &self,
         contract_address: Address,
-        user_address: Address,
+        struct_slots: [H256; 4], // slots of the data for witch merkle proof should be fetched
+        block: BlockId,
     ) -> Result<EIP1186ProofResponse, Box<dyn std::error::Error>> {
-        let mapping_slot = U256::zero();
-        let base_slot = self.calculate_mapping_slot(user_address, mapping_slot);
-        let struct_slots = self.calculate_struct_slots(base_slot);
+        // let mapping_slot = U256::zero();
+        // let base_slot = self.calculate_mapping_slot(user_address, mapping_slot);
 
         // Convert storage slots to the format expected by eth_getProof
         let storage_keys: Vec<H256> = struct_slots.to_vec();
 
+        println!("Getting block details for block: {:?}", block);
+        let block_data = self.provider.get_block(block).await?.unwrap();
+        let state_root = block_data.state_root;
+        println!("Got state root: 0x{}", hex::encode(state_root.as_bytes()));
+
         // let response: Value = self.provider.request("eth_getProof", Some(params)).await?;
         let response: EIP1186ProofResponse = self
             .provider
-            .get_proof(contract_address, storage_keys, None)
+            .get_proof(contract_address, storage_keys, Some(block))
             .await?;
 
         println!("{}", serde_json::to_string_pretty(&response).unwrap());
@@ -183,11 +274,45 @@ impl MerkleProofFetcher {
         Ok(response)
     }
 
+    /// Fetch merkle proofs using eth_getProof
+    pub async fn fetch_lending_merkle_proof(
+        &self,
+        contract_address: Address,
+        user_address: Address,
+        block: BlockId,
+    ) -> Result<Vec<StorageMerkleProof>, Box<dyn std::error::Error>> {
+        let mapping_slot = U256::zero();
+        let base_slot = self.calculate_mapping_slot(user_address, mapping_slot);
+        let struct_slots = self.calculate_struct_slots(base_slot);
+
+        // Convert storage slots to the format expected by eth_getProof
+        let storage_keys: Vec<H256> = struct_slots.to_vec();
+
+        println!("Getting block details for block: {:?}", block);
+        let block_data = self.provider.get_block(block).await?.unwrap();
+        let state_root = block_data.state_root;
+        println!("Got state root: 0x{}", hex::encode(state_root.as_bytes()));
+
+        // let response: Value = self.provider.request("eth_getProof", Some(params)).await?;
+        let response: EIP1186ProofResponse = self
+            .provider
+            .get_proof(contract_address, storage_keys, Some(block))
+            .await?;
+
+        println!("{}", serde_json::to_string_pretty(&response).unwrap());
+        // Parse the respons
+        // let account_proof: AccountProof = serde_json::from_value(response)?;
+        // println!("accoutn proof");
+        // println!("{:?}", account_proof);
+        Ok(self.convert_res_to_storage_proofs(&response, state_root))
+    }
+
     /// Main function to fetch complete user history with proofs
     pub async fn fetch_complete_user_data(
         &self,
         contract_address: Address,
         user_address: Address,
+        blockId: BlockId,
     ) -> Result<UserHistoryProof, Box<dyn std::error::Error>> {
         println!(
             "🔍 Fetching data for user {} from contract {}",
@@ -198,19 +323,31 @@ impl MerkleProofFetcher {
         let mapping_slot = U256::zero();
         let base_slot = self.calculate_mapping_slot(user_address, mapping_slot);
         let struct_slots = self.calculate_struct_slots(base_slot);
+        // Get current block number
+        let block = self.provider.get_block(blockId).await?.unwrap();
+        let state_root = block.state_root;
+        let block_number = self.provider.get_block_number().await?;
 
         // Fetch user history values
         let user_history = self
-            .fetch_user_history(contract_address, user_address)
+            .fetch_user_history(contract_address, user_address, blockId)
             .await?;
+        let response = self
+            .fetch_whole_EIP_proof(contract_address, struct_slots, blockId)
+            .await
+            .unwrap();
+        println!("++++++++++++++++++++++++++++++++++++++++");
+        println!("State root {}", state_root);
+        println!("{:?}", user_history);
 
-        // Fetch merkle proofs
-        let merkle_proof = self
-            .fetch_lending_merkle_proof(contract_address, user_address)
-            .await?;
-
-        // Get current block number
-        let block_number = self.provider.get_block_number().await?;
+        // // Fetch storage merkle proofs
+        // let storage_merkle_proof = self
+        //     .fetch_lending_merkle_proof(contract_address, user_address, block)
+        //     .await?;
+        // // Fetch contracnt account merkle proofs
+        // let storage_merkle_proof = self
+        //     .fetch_lending_merkle_proof(contract_address, user_address, block)
+        //     .await?;
 
         // Create storage slot information
         let field_names = [
@@ -248,13 +385,17 @@ impl MerkleProofFetcher {
             base_storage_slot: base_slot,
         };
 
+        println!("State root {}", state_root);
         Ok(UserHistoryProof {
             contract_address,
             user_address,
             block_number: block_number.to_string(),
             user_history,
             storage_slots,
-            merkle_proof,
+            state_root,
+            contract_merkle_proof: self.convert_res_to_account_proof(&response, state_root),
+            storage_merkle_proofs: self
+                .convert_res_to_storage_proofs(&response, response.storage_hash),
             metadata,
         })
     }
@@ -283,69 +424,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create fetcher
     let fetcher = MerkleProofFetcher::new(rpc_url, None)?;
-
-    // Fetch complete data
-    match fetcher
-        .fetch_complete_user_data(contract_address, user_address)
-        .await
-    {
-        Ok(data) => {
-            // Print summary
-            println!("\n📊 User History Summary:");
-            println!(
-                "  First Interaction: {}",
-                data.user_history.first_interaction_timestamp
-            );
-            println!("  Liquidations: {}", data.user_history.liquidations);
-            println!(
-                "  Successful Payments: {}",
-                data.user_history.successful_payments
-            );
-            println!("  Base Storage Slot: {:?}", data.metadata.base_storage_slot);
-
-            // Print storage slots
-            println!("\n🗄️  Storage Slots:");
-            for slot in &data.storage_slots {
-                println!(
-                    "  {}: {} (slot: {:?})",
-                    slot.field_name, slot.decoded_value, slot.slot
-                );
-            }
-
-            // Save to file
-            let filename = format!(
-                "user_history_proof_{}_{}.json",
-                contract_address
-                    .to_string()
-                    .replace("0x", "")
-                    .chars()
-                    .take(8)
-                    .collect::<String>(),
-                user_address
-                    .to_string()
-                    .replace("0x", "")
-                    .chars()
-                    .take(8)
-                    .collect::<String>()
-            );
-
-            fetcher.save_to_file(&data, &filename).await?;
-
-            // Also print formatted JSON to console
-            println!("\n📄 Complete JSON Data:");
-            println!("{}", serde_json::to_string_pretty(&data)?);
-        }
-        Err(e) => {
-            eprintln!("❌ Error fetching data: {}", e);
-
-            // Try basic connectivity test
-            println!("\n🔧 Testing basic connectivity...");
-            match fetcher.provider.get_block_number().await {
-                Ok(block) => println!("✅ Connected to RPC. Current block: {}", block),
-                Err(e) => println!("❌ RPC connection failed: {}", e),
-            }
-        }
-    }
-
     Ok(())
 }

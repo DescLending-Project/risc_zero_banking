@@ -6,22 +6,24 @@ pragma solidity ^0.8.20;
 /// @dev This contract demonstrates one pattern for offloading the computation of an expensive
 ///      or difficult to implement function to a RISC Zero guest running on the zkVM.
 contract Lending{
+  mapping(address => UserHistory) public users;
+  uint256 history = 2;
   struct UserHistory{
     uint256 firstInteractionTimestamp;
     uint256 liquidations;
     uint256 succesfullPayments;
+    uint256 curentTotalDept;
     
   }
-  mapping(address => UserHistory) public users;
-  uint256 history = 2;
 
     //
     // /// @notice Initialize the contract, binding it to a specified RISC Zero verifier.
-    constructor(address userAddress , uint256 firstInteractionTimestamp , uint256 liquidations , uint256 succesfullPayments) {
+    constructor(address userAddress , uint256 firstInteractionTimestamp , uint256 liquidations , uint256 succesfullPayments ,uint256 totalDept) {
       users[userAddress] = UserHistory({
         firstInteractionTimestamp : firstInteractionTimestamp,
         liquidations : liquidations,
-        succesfullPayments: succesfullPayments
+        succesfullPayments: succesfullPayments,
+        curentTotalDept : totalDept
       });
 
     }

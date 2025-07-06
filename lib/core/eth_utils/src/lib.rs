@@ -199,32 +199,32 @@ pub async fn setup_eth_provider(node_type: Node) -> Result<Provider<Http>> {
     return Ok(provider);
     // if ALCHEMY_API_KEY is set then try alchemyapi
 }
-pub async fn get_user_history_merkle_proof(
-    provider: Provider<Http>,
-    user_address: Address,
-    contract_address: Address,
-) -> Result<EIP1186ProofResponse> {
-    let fetcher = MerkleProofFetcher::new("http://localhost:8545", Some(provider)).unwrap();
-    let complete_user_data = fetcher
-        .fetch_complete_user_data(contract_address, user_address)
-        .await
-        .unwrap();
-
-    return Ok(complete_user_data.merkle_proof);
-}
-pub async fn get_user_complete_history(
-    provider: Provider<Http>,
-    user_address: Address,
-    contract_address: Address,
-) -> Result<UserHistoryProof> {
-    let fetcher = MerkleProofFetcher::new("http://localhost:8545", Some(provider)).unwrap();
-    let complete_user_data = fetcher
-        .fetch_complete_user_data(contract_address, user_address)
-        .await
-        .unwrap();
-
-    return Ok(complete_user_data);
-}
+// pub async fn get_user_history_merkle_proof(
+//     provider: Provider<Http>,
+//     user_address: Address,
+//     contract_address: Address,
+// ) -> Result<MerkleProof> {
+//     let fetcher = MerkleProofFetcher::new("http://localhost:8545", Some(provider)).unwrap();
+//     let complete_user_data = fetcher
+//         .fetch_complete_user_data(contract_address, user_address)
+//         .await
+//         .unwrap();
+//
+//     return Ok(complete_user_data.merkle_proof);
+// }
+// pub async fn get_user_complete_history(
+//     provider: Provider<Http>,
+//     user_address: Address,
+//     contract_address: Address,
+// ) -> Result<UserHistoryProof> {
+//     let fetcher = MerkleProofFetcher::new("http://localhost:8545", Some(provider)).unwrap();
+//     let complete_user_data = fetcher
+//         .fetch_complete_user_data(contract_address, user_address)
+//         .await
+//         .unwrap();
+//
+//     return Ok(complete_user_data);
+// }
 
 // pub async fn get_account_merkle_proof(
 //     provider: Provider<Http>,

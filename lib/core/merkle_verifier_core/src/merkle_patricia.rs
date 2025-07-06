@@ -28,6 +28,26 @@ impl From<&str> for ProofError {
         ProofError::InvalidProof(msg.to_string())
     }
 }
+// Account data structure matching Ethereum's state trie format
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountData {
+    pub nonce: U256,
+    pub balance: U256,
+    pub storage_root: H256,
+    pub code_hash: H256,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AccountMerkleProof {
+    pub state_root: H256,
+    pub address: [u8; 20],
+    pub account_proof: Vec<Vec<u8>>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StorageMerkleProof {
+    pub state_root: H256,
+    pub key: [u8; 32],
+    pub storage_proof: Vec<Vec<u8>>,
+}
 
 // Define the basic node types as before
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,6 +110,11 @@ pub fn verify_proof(
 
         // Verify this node matches what we expect
         if actual_hash != expected_hash {
+            // println!("Acutuall thing");
+            // println!("{:?}", actual_hash);
+            // println!("Expected thing");
+            // println!("{:?}", expected_hash);
+
             return Err(ProofError::HashMismatch(
                 "Invalid proof: hash mismatch".into(),
             ));
@@ -132,7 +157,7 @@ pub fn verify_proof(
 
             match node_type {
                 // Leaf node - terminal node with a value
-                0x2 => {
+                0x2 | 0x3 => {
                     // Check remaining key matches node path
                     let remaining_key = &key_nibbles[key_index..];
                     if remaining_key != node_path.as_slice() {
@@ -145,7 +170,7 @@ pub fn verify_proof(
                 }
 
                 // Extension node - internal node that compresses shared path
-                0x1 => {
+                0x0 | 0x1 => {
                     // Check that the path matches our key segment
                     let path_len = node_path.len();
                     if key_index + path_len > key_nibbles.len() {
@@ -209,14 +234,30 @@ pub fn decode_compact(encoded: &[u8]) -> (u8, Vec<u8>) {
     (node_type, result)
 }
 
-// Account data structure matching Ethereum's state trie format
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AccountData {
-    pub nonce: U256,
-    pub balance: U256,
-    pub storage_root: H256,
-    pub code_hash: H256,
-}
+// pub fn verify_account_proof2(
+//     proof: &AccountMerkleProof,
+// ) -> Result<Option<AccountData>, ProofError> {
+//     // We need to hash the address with keccak256 to get the key for the proof.state trie
+//     let address_hash = Keccak256::digest(proof.address).to_vec();
+//
+//     // Verify the proof to get the account RLP
+//     let account_rlp = match verify_proof(proof.state_root, &address_hash, &proof.account_proof)? {
+//         Some(data) => data,
+//         None => return Ok(None), // Account doesn't exist
+//     };
+//
+//     // Decode the account data
+//     let rlp = Rlp::new(&account_rlp);
+//
+//     let account = AccountData {
+//         nonce: rlp.at(0)?.as_val()?,
+//         balance: rlp.at(1)?.as_val()?,
+//         storage_root: rlp.at(2)?.as_val()?,
+//         code_hash: rlp.at(3)?.as_val()?,
+//     };
+//
+//     Ok(Some(account))
+// }
 
 pub fn verify_account_proof(
     state_root: H256,
@@ -264,30 +305,39 @@ pub fn verify_storage_proof(
     }
 }
 
-// fn called in RISC Zero guest code:
-pub fn verify_eth_proof(
-    state_root: H256,
-    address: [u8; 20],
-    key: Option<[u8; 32]>,
-    account_proof: Vec<Vec<u8>>,
-    storage_proof: Option<Vec<Vec<u8>>>,
-) -> Result<(Option<AccountData>, Option<U256>), ProofError> {
-    // First verify the account proof
-    let account_data = verify_account_proof(state_root, &address, &account_proof)?;
+pub fn verify_all_account_proofs(owned_accounts_merkle_proofs: &Vec<AccountMerkleProof>) -> U256 {
+    let mut total_eth_balance: U256 = U256::from(0);
+    for (index, proof) in owned_accounts_merkle_proofs.iter().enumerate() {
+        print!("{:?}", index);
+        let account: AccountData =
+            match verify_account_proof(proof.state_root, &proof.address, &proof.account_proof) {
+                Ok(Some(account_data)) => account_data,
+                Ok(None) => panic!("Account proof verification failed - no account data"),
+                Err(e) => panic!(
+                    "Account proof verification error : {:?} \n for the proof {:?}",
+                    e, proof
+                ),
+            };
 
-    // If no account exists or we don't need storage proof, return early
-    let account = match account_data {
-        Some(data) => data,
-        None => return Ok((None, None)),
-    };
-
-    //NOTE: Commented out for now as for now we only want to check the account ballance really
-    // If we have a storage key, verify its proof
-    // let storage_value = if let (Some(k), Some(proof)) = (key, storage_proof) {
-    //     verify_storage_proof(account.storage_root, &k, &proof)?
-    // } else {
-    //     None
-    // };
-
-    Ok((Some(account), None))
+        total_eth_balance += account.balance;
+        // println!("{:?}", account);
+    }
+    return total_eth_balance;
+}
+pub fn verify_all_storage_proofs(storage_proofs: &Vec<StorageMerkleProof>) -> Vec<U256> {
+    let mut values: Vec<U256> = vec![];
+    // println!("{:?}", storage_proofs);
+    for (index, proof) in storage_proofs.iter().enumerate() {
+        print!("Index {:?} val: ", index);
+        let value = match verify_storage_proof(proof.state_root, &proof.key, &proof.storage_proof) {
+            Ok(Some(val)) => val,
+            Ok(None) => panic!("Storage proof verification failed - no return data"),
+            Err(e) => panic!(
+                "Storage proof verification error : {:?} \n for the proof {:?}",
+                e, proof
+            ),
+        };
+        values.push(value);
+    }
+    return values;
 }
