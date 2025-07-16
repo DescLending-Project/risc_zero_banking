@@ -39,6 +39,12 @@ pub struct UserHistoryProof {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct AllMerkleProofs {
+    pub user_history_proof: UserHistoryProof,
+    pub owned_accounts_merkle_proofs: Vec<AccountMerkleProof>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProofMetadata {
     pub fetched_at: String,
     pub rpc_url: String,
@@ -410,6 +416,35 @@ impl MerkleProofFetcher {
         tokio::fs::write(filename, json_data).await?;
         println!("💾 Data saved to {}", filename);
         Ok(())
+    }
+
+    pub async fn fetch_all_merkle_proofs(
+        &self,
+        contract_address: Address,
+        user_address: Address,
+        user_owned_addresses: Vec<Address>,
+        block_id: BlockId,
+    ) -> Result<AllMerkleProofs, Box<dyn std::error::Error>> {
+        // let block_number = provider.get_block(BlockNumber::Latest).await?.unwrap();
+        // let user_history_proof = get_user_complete_history(&provider, user_address, contract_address).await;
+
+        let user_history_proof = self
+            .fetch_complete_user_data(contract_address, user_address, block_id)
+            .await
+            .unwrap();
+        let mut owned_accounts_merkle_proofs: Vec<AccountMerkleProof> = Vec::new();
+        for owned_addr in user_owned_addresses {
+            let owned_account_merkle_proof = self
+                .fetch_account_merkle_proof(owned_addr, block_id)
+                .await
+                .unwrap();
+            owned_accounts_merkle_proofs.push(owned_account_merkle_proof);
+        }
+
+        return Ok(AllMerkleProofs {
+            user_history_proof,
+            owned_accounts_merkle_proofs,
+        });
     }
 }
 

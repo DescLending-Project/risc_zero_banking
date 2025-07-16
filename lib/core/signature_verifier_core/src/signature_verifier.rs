@@ -73,8 +73,8 @@ pub fn generate_all_signatures(user_private_keys: Vec<[u8; 32]>, message: &str) 
 }
 pub fn verify_all_signatures(
     message: &str,
-    all_signatures: Vec<[u8; 65]>,
-    all_addresses: Vec<Address>,
+    all_signatures: &Vec<[u8; 65]>,
+    all_addresses: &Vec<Address>,
 ) -> bool {
     for (index, signature) in all_signatures.iter().enumerate() {
         let is_valid =
@@ -226,13 +226,13 @@ mod tests {
         let signatures = generate_all_signatures(anvil_private_keys.clone(), message);
 
         // Test successful verification
-        let all_valid = verify_all_signatures(message, signatures.clone(), anvil_addresses.clone());
+        let all_valid = verify_all_signatures(&message, &signatures, &anvil_addresses.clone());
         assert!(all_valid, "All signatures should be valid");
 
         // Test with wrong message (should fail)
         let wrong_message = "Wrong message";
         let all_valid_wrong =
-            verify_all_signatures(wrong_message, signatures.clone(), anvil_addresses.clone());
+            verify_all_signatures(&wrong_message, &signatures, &anvil_addresses.clone());
         assert!(
             !all_valid_wrong,
             "Verification should fail with wrong message"
@@ -242,8 +242,7 @@ mod tests {
         let mut wrong_addresses = anvil_addresses.clone();
         wrong_addresses[1] =
             Address::from_slice(&hex::decode("9965507D1a55bcC2695C58ba16FB37d819B0A4dc").unwrap()); // Different address
-        let all_valid_wrong_addr =
-            verify_all_signatures(message, signatures.clone(), wrong_addresses);
+        let all_valid_wrong_addr = verify_all_signatures(&message, &signatures, &wrong_addresses);
         assert!(
             !all_valid_wrong_addr,
             "Verification should fail with wrong address"
@@ -252,7 +251,8 @@ mod tests {
         // Test with mismatched signature (should fail)
         let mut wrong_signatures = signatures.clone();
         wrong_signatures[0] = signatures[1]; // Use signature from account 1 for account 0
-        let all_valid_wrong_sig = verify_all_signatures(message, wrong_signatures, anvil_addresses);
+        let all_valid_wrong_sig =
+            verify_all_signatures(message, &wrong_signatures, &anvil_addresses.clone());
         assert!(
             !all_valid_wrong_sig,
             "Verification should fail with mismatched signature"
