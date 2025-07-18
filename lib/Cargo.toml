@@ -6,7 +6,7 @@ members = [
      "core/fetch_merkle",
      "core/score_calculation",
      # "proofs/example_merkle_verify", 
-     "proofs/merkle_verify", "core/signature_verifier_core", "core/nullifier_verifier_core", 
+     "proofs/merkle_verify", "core/signature_verifier_core", "core/nullifier_verifier_core", "core/loaders", 
     # "tlsn-risc0",
     # "tlsn-risc0/methods",
     # "tlsn-test-suite",
