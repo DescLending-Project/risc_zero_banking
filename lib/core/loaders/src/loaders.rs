@@ -3,6 +3,7 @@ use fetch_merkle::AllMerkleProofs;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json;
 use std::fs;
+use std::ops::Add;
 use std::path::Path;
 
 // Wrapper type for [u8; 32] that implements Serialize/Deserialize
@@ -136,4 +137,22 @@ pub fn load_nullifiers<P: AsRef<Path>>(
         .map(|wrapper| wrapper.0)
         .collect();
     Ok(nullifiers)
+}
+pub fn save_user_owned_addresses<P: AsRef<Path>>(
+    all_user_owned_addresses: &Vec<Address>,
+    file_path: P,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Convert to wrapper type for serialization
+    let json_string = serde_json::to_string_pretty(&all_user_owned_addresses)?;
+    fs::write(file_path, json_string)?;
+    Ok(())
+}
+
+/// Load user_owned_addresses from a JSON file
+pub fn load_user_owned_addresses<P: AsRef<Path>>(
+    file_path: P,
+) -> Result<Vec<Address>, Box<dyn std::error::Error>> {
+    let json_string = fs::read_to_string(file_path)?;
+    let user_owned_addresses: Vec<Address> = serde_json::from_str(&json_string)?;
+    Ok(user_owned_addresses)
 }
