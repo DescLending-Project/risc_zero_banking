@@ -99,7 +99,7 @@ contract EvenNumberDeploy is Script, RiscZeroCheats {
 
         // defuatl anvil user 
         address userAddress = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
-        Lending lending = new Lending(userAddress, 1,2,3);
+        Lending lending = new Lending(userAddress, 1,2,3,10000000);
         console2.log("Lending contract deployed at", address(lending));
         // Deploy the application contract.
         EvenNumber evenNumber = new EvenNumber(verifier);

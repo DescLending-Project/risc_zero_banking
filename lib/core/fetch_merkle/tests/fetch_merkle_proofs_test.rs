@@ -3,6 +3,7 @@ mod tests {
     use ethers::{
         core::types::{Address, EIP1186ProofResponse, H256, U256},
         providers::{Http, Middleware, Provider},
+        types::{BlockId, BlockNumber},
         utils::keccak256,
     };
     use std::str::FromStr;
@@ -22,8 +23,10 @@ mod tests {
         println!("Base slot: {:?}", base_slot);
         println!("Struct slots: {:?}", struct_slots);
 
+        let block_number = 0;
+        let block = BlockId::Number(BlockNumber::Number(block_number.into()));
         match fetcher
-            .fetch_complete_user_data(contract_address, user_address)
+            .fetch_complete_user_data(contract_address, user_address, block)
             .await
         {
             Ok(data) => {
@@ -114,8 +117,11 @@ mod tests {
         let user_address = Address::from_str("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266").unwrap(); // Default Anvil account
 
         // This test requires Anvil to be running with the contract deployed
+
+        let block_number = 0;
+        let block = BlockId::Number(BlockNumber::Number(block_number.into()));
         match fetcher
-            .fetch_user_history(contract_address, user_address)
+            .fetch_user_history(contract_address, user_address, block)
             .await
         {
             Ok(history) => {

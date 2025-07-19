@@ -1,0 +1,15 @@
+[package]
+name = "defi_inputs_validator"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+risc0-zkvm = { version = "2.1.0", default-features = false, features = ['std'] }
+merkle_verifier_core = { path = "../../../../lib/core/merkle_verifier_core/",default-features = false }
+signature_verifier_core = { path = "../../../../lib/core/signature_verifier_core/",default-features = false }
+nullifier_verifier_core = { path = "../../../../lib/core/nullifier_verifier_core/",default-features = false }
+shared = {path = "../../shared/"}
+ethereum-types = "0.14"
+serde="1.0"

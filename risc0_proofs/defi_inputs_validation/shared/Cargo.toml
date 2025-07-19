@@ -1,0 +1,10 @@
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+merkle_verifier_core = { path = "../../../lib/core/merkle_verifier_core/",default-features = false }
+ethereum-types = "0.14"
+serde = { version = "1.0", features = ["derive"] }
+serde_arrays = "0.1"

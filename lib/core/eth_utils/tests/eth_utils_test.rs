@@ -23,6 +23,7 @@ mod tests {
         let result = sign_message(ANVIL_PRIVATE_KEY_1, message).await;
 
         assert!(result.is_ok());
+
         let signature = result.unwrap();
 
         // Check signature has valid components

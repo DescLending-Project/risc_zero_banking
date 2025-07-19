@@ -1,8 +1,7 @@
 [package]
-name = "merkle_verify"
+name = "loaders"
 version = "0.1.0"
 edition = "2024"
-
 
 [lib]
 path = "src/lib.rs"
@@ -15,7 +14,6 @@ fetch_merkle = { path = "../../core/fetch_merkle/",default-features = false }
 merkle_verifier_core = { path = "../../core/merkle_verifier_core/",default-features = false }
 signature_verifier_core = { path = "../../core/signature_verifier_core/",default-features = false }
 nullifier_verifier_core = { path = "../../core/nullifier_verifier_core/",default-features = false }
-loaders = { path = "../../core/loaders/",default-features = false }
 eth_utils = { path = "../../core/eth_utils"}
 score_calculation = { path = "../../core/score_calculation/"}
 sha3 = { version = "0.10", default-features = false }
@@ -23,4 +21,7 @@ ethereum-types = { version = "0.14", default-features = false, features = ["seri
 rlp = { version = "0.5", default-features = false }
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde-big-array = "0.5"
+serde_json = "1.0"
+base64="0.22.0"
 
