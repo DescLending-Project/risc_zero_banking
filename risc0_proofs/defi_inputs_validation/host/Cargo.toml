@@ -1,0 +1,14 @@
+[package]
+name = "host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+methods = { path = "../methods" }
+risc0-zkvm = { version = "2.1.0" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+ethereum-types = "0.14"
+ethers = { version = "2.0", features = ["ws", "rustls"] }
+loaders = { path = "../../../lib/core/loaders/",default-features = false }
+shared = {path = "../shared/"}

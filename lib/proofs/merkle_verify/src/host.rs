@@ -31,8 +31,10 @@ async fn defi_inputs_validation_test() {
     // the verification logic == stuff that needs to be runed in the guest
 
     // 1. Verifying all owned account proofs and getting the total eth balance of all owned accounts
-    let mut total_eth_balance: U256 =
-        verify_all_account_proofs(&all_merkle_proofs.owned_accounts_merkle_proofs);
+    let mut total_eth_balance: U256 = verify_all_account_proofs(
+        &all_merkle_proofs.owned_accounts_merkle_proofs,
+        &user_owned_addresses,
+    );
 
     // 2. Verifying merkle proof of lending contract to ensure that defi data came from our
     //    contract
@@ -41,11 +43,15 @@ async fn defi_inputs_validation_test() {
         contract_merkle_proof.state_root,
         &contract_merkle_proof.address,
         &contract_merkle_proof.account_proof,
-    );
+    )
+    .unwrap()
+    .unwrap();
 
     // 3. Verifying merklpe proofs of all storge slots of the user and retriving their values
-    let user_history_data =
-        verify_all_storage_proofs(&all_merkle_proofs.user_history_proof.storage_merkle_proofs);
+    let user_history_data = verify_all_storage_proofs(
+        &all_merkle_proofs.user_history_proof.storage_merkle_proofs,
+        &contract.storage_root,
+    );
 
     // 4. verify the signatures
     let signatures_valid = verify_all_signatures(message, &all_signatures, &user_owned_addresses);
@@ -126,8 +132,10 @@ async fn defi_inputs_fetch_and_validation_test() {
     // the verification logic == stuff that needs to be runed in the guest
 
     // 1. Verifying all owned account proofs and getting the total eth balance of all owned accounts
-    let mut total_eth_balance: U256 =
-        verify_all_account_proofs(&all_merkle_proofs.owned_accounts_merkle_proofs);
+    let mut total_eth_balance: U256 = verify_all_account_proofs(
+        &all_merkle_proofs.owned_accounts_merkle_proofs,
+        &user_owned_addresses,
+    );
 
     // 2. Verifying merkle proof of lending contract to ensure that defi data came from our
     //    contract
@@ -136,11 +144,15 @@ async fn defi_inputs_fetch_and_validation_test() {
         contract_merkle_proof.state_root,
         &contract_merkle_proof.address,
         &contract_merkle_proof.account_proof,
-    );
+    )
+    .unwrap()
+    .unwrap();
 
     // 3. Verifying merklpe proofs of all storge slots of the user and retriving their values
-    let user_history_data =
-        verify_all_storage_proofs(&all_merkle_proofs.user_history_proof.storage_merkle_proofs);
+    let user_history_data = verify_all_storage_proofs(
+        &all_merkle_proofs.user_history_proof.storage_merkle_proofs,
+        &contract.storage_root,
+    );
 
     // 4. verify the signatures
     let signatures_valid = verify_all_signatures(message, &all_signatures, &user_owned_addresses);

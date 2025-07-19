@@ -1,7 +1,7 @@
 extern crate alloc;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use ethereum_types::{H256, U256};
+use ethereum_types::{Address, H256, U256};
 use rlp::{DecoderError, Rlp};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
@@ -305,7 +305,10 @@ pub fn verify_storage_proof(
     }
 }
 
-pub fn verify_all_account_proofs(owned_accounts_merkle_proofs: &Vec<AccountMerkleProof>) -> U256 {
+pub fn verify_all_account_proofs(
+    owned_accounts_merkle_proofs: &Vec<AccountMerkleProof>,
+    owned_accounts_addresses: &Vec<Address>,
+) -> U256 {
     let mut total_eth_balance: U256 = U256::from(0);
     for (index, proof) in owned_accounts_merkle_proofs.iter().enumerate() {
         print!("{:?}", index);
@@ -318,17 +321,28 @@ pub fn verify_all_account_proofs(owned_accounts_merkle_proofs: &Vec<AccountMerkl
                     e, proof
                 ),
             };
+        assert!(
+            proof
+                .address
+                .eq(&owned_accounts_addresses[index].as_bytes()),
+            "Account address and AccountMerkleProof address mismatch"
+        );
 
         total_eth_balance += account.balance;
         // println!("{:?}", account);
     }
     return total_eth_balance;
 }
-pub fn verify_all_storage_proofs(storage_proofs: &Vec<StorageMerkleProof>) -> Vec<U256> {
+pub fn verify_all_storage_proofs(
+    storage_proofs: &Vec<StorageMerkleProof>,
+    state_root: &H256,
+) -> Vec<U256> {
     let mut values: Vec<U256> = vec![];
     // println!("{:?}", storage_proofs);
     for (index, proof) in storage_proofs.iter().enumerate() {
         print!("Index {:?} val: ", index);
+        // Checking if the state_root is correct
+        assert!(proof.state_root.eq(state_root), "State roots mismatch");
         let value = match verify_storage_proof(proof.state_root, &proof.key, &proof.storage_proof) {
             Ok(Some(val)) => val,
             Ok(None) => panic!("Storage proof verification failed - no return data"),
