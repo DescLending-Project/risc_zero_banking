@@ -340,7 +340,7 @@ pub fn verify_all_storage_proofs(
     let mut values: Vec<U256> = vec![];
     // println!("{:?}", storage_proofs);
     for (index, proof) in storage_proofs.iter().enumerate() {
-        print!("Index {:?} val: ", index);
+        print!("Index : {:?} ", index);
         // Checking if the state_root is correct
         assert!(proof.state_root.eq(state_root), "State roots mismatch");
         let value = match verify_storage_proof(proof.state_root, &proof.key, &proof.storage_proof) {

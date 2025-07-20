@@ -1,5 +1,6 @@
 use ethereum_types::Address;
 use fetch_merkle::AllMerkleProofs;
+use k256::ecdsa::{RecoveryId, Signature};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json;
 use std::fs;
@@ -86,31 +87,41 @@ pub fn load_all_merkle_proofs<P: AsRef<Path>>(
     let proofs: AllMerkleProofs = serde_json::from_str(&json_string)?;
     Ok(proofs)
 }
-
-/// Save signatures to a JSON file
 pub fn save_signatures<P: AsRef<Path>>(
-    all_signatures: &Vec<[u8; 65]>,
+    all_signatures: &Vec<(Signature, RecoveryId)>,
     file_path: P,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Convert to wrapper type for serialization
-    let wrapped_signatures: Vec<Array65> = all_signatures.iter().map(|&arr| Array65(arr)).collect();
-    let json_string = serde_json::to_string_pretty(&wrapped_signatures)?;
+    let signature_vecs: Vec<Vec<u8>> = all_signatures
+        .iter()
+        .map(|(sig, recovery_id)| {
+            let mut bytes = sig.to_bytes().to_vec();
+            bytes.push(recovery_id.to_byte());
+            bytes
+        })
+        .collect();
+
+    let json_string = serde_json::to_string_pretty(&signature_vecs)?;
     fs::write(file_path, json_string)?;
     Ok(())
 }
 
-/// Load signatures from a JSON file
 pub fn load_signatures<P: AsRef<Path>>(
     file_path: P,
-) -> Result<Vec<[u8; 65]>, Box<dyn std::error::Error>> {
+) -> Result<Vec<(Signature, RecoveryId)>, Box<dyn std::error::Error>> {
     let json_string = fs::read_to_string(file_path)?;
-    let wrapped_signatures: Vec<Array65> = serde_json::from_str(&json_string)?;
-    // Convert back to [u8; 65]
-    let signatures: Vec<[u8; 65]> = wrapped_signatures
+    let signature_vecs: Vec<Vec<u8>> = serde_json::from_str(&json_string)?;
+
+    signature_vecs
         .into_iter()
-        .map(|wrapper| wrapper.0)
-        .collect();
-    Ok(signatures)
+        .map(|bytes| {
+            if bytes.len() != 65 {
+                return Err("Invalid signature length".into());
+            }
+            let signature = Signature::try_from(&bytes[..64])?;
+            let recovery_id = RecoveryId::try_from(bytes[64])?;
+            Ok((signature, recovery_id))
+        })
+        .collect()
 }
 
 /// Save nullifiers to a JSON file

@@ -1,11 +1,12 @@
 {
   "contract_address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
   "user_address": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-  "block_number": "3",
+  "block_number": "6",
   "user_history": {
     "first_interaction_timestamp": "0x0",
     "liquidations": "0x0",
-    "successful_payments": "0x0"
+    "successful_payments": "0x0",
+    "owed_funds": "0x0"
   },
   "storage_slots": [
     {
@@ -25,6 +26,12 @@
       "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
       "decoded_value": "0x0",
       "field_name": "successfulPayments"
+    },
+    {
+      "slot": "0x723077b8a1b173adc35e5f0e7e3662fd1208212cb629f9c128551ea7168da725",
+      "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "decoded_value": "0x0",
+      "field_name": "owed_funds"
     }
   ],
   "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -536,7 +543,7 @@
     }
   ],
   "metadata": {
-    "fetched_at": "2025-07-19T16:45:12.193551+00:00",
+    "fetched_at": "2025-07-20T14:27:06.401288+00:00",
     "rpc_url": "http://localhost:8545",
     "mapping_slot": "0x0",
     "base_storage_slot": "0x723077b8a1b173adc35e5f0e7e3662fd1208212cb629f9c128551ea7168da722"

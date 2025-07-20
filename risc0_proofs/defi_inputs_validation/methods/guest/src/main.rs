@@ -10,7 +10,7 @@ use signature_verifier_core::signature_verifier::verify_all_signatures;
 
 fn main() {
     let DefiProofInput {
-        all_signatures,
+        all_full_signatures,
         all_nullifiers,
         owned_accounts_addresses,
         owned_accounts_merkle_proofs,
@@ -65,16 +65,20 @@ fn main() {
 
     // 4. verify the signatures
     let signatures_valid =
-        verify_all_signatures(&message, &all_signatures, &owned_accounts_addresses);
+        verify_all_signatures(&message, &all_full_signatures, &owned_accounts_addresses);
     assert!(signatures_valid, "Singatures Unvalid");
 
     now = env::cycle_count();
     eprintln!("{}: verify_all_signatures", now - last);
+    eprintln!("{}: fuck this ", now - last);
     last = now;
 
     // 5. verify the nullifers
-    let nullifiers_valid =
-        verify_all_nullifiers(&all_nullifiers, &all_signatures, &owned_accounts_addresses);
+    let nullifiers_valid = verify_all_nullifiers(
+        &all_nullifiers,
+        &all_full_signatures,
+        &owned_accounts_addresses,
+    );
     assert!(nullifiers_valid, "Nullifiers Unvalid");
 
     now = env::cycle_count();

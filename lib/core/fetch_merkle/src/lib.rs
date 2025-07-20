@@ -15,6 +15,7 @@ pub struct UserHistory {
     pub first_interaction_timestamp: U256,
     pub liquidations: U256,
     pub successful_payments: U256,
+    pub owed_funds: U256,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -156,7 +157,7 @@ impl MerkleProofFetcher {
             .provider
             .get_storage_at(contract_address, struct_slots[2], Some(block))
             .await?;
-        let total_dept = self
+        let owed_funds = self
             .provider
             .get_storage_at(contract_address, struct_slots[3], Some(block))
             .await?;
@@ -165,6 +166,7 @@ impl MerkleProofFetcher {
             first_interaction_timestamp: U256::from_big_endian(timestamp.as_bytes()),
             liquidations: U256::from_big_endian(liquidations.as_bytes()),
             successful_payments: U256::from_big_endian(payments.as_bytes()),
+            owed_funds: U256::from_big_endian(owed_funds.as_bytes()),
         })
     }
     pub fn convert_res_to_storage_proofs(
@@ -360,11 +362,13 @@ impl MerkleProofFetcher {
             "firstInteractionTimestamp",
             "liquidations",
             "successfulPayments",
+            "owed_funds",
         ];
         let values = [
             user_history.first_interaction_timestamp,
             user_history.liquidations,
             user_history.successful_payments,
+            user_history.owed_funds,
         ];
 
         let storage_slots: Vec<StorageSlot> = struct_slots

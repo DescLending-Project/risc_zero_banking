@@ -8,3 +8,4 @@ merkle_verifier_core = { path = "../../../lib/core/merkle_verifier_core/",defaul
 ethereum-types = "0.14"
 serde = { version = "1.0", features = ["derive"] }
 serde_arrays = "0.1"
+k256 = { git = "https://github.com/risc0/RustCrypto-elliptic-curves" }

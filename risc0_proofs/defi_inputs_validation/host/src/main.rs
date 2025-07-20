@@ -33,13 +33,13 @@ fn main() {
     // TODO: We need to aggree on message that we will use to create signing.
     // NOTE: in this case the signatres and nullifiers where generated with message = "Block 2"
     let message = "Block 2";
-    let all_signatures = load_signatures("defi_inputs/signatures.json").unwrap();
+    let all_full_signatures = load_signatures("defi_inputs/signatures.json").unwrap();
     let all_nullifiers = load_nullifiers("defi_inputs/nullifiers.json").unwrap();
     let all_merkle_proofs = load_all_merkle_proofs("defi_inputs/all_merkle_proofs.json").unwrap();
     let user_owned_addresses =
         load_user_owned_addresses("defi_inputs/user_owned_addresses.json").unwrap();
     let proofInputs: DefiProofInput = DefiProofInput {
-        all_signatures,
+        all_full_signatures,
         all_nullifiers,
         owned_accounts_addresses: user_owned_addresses,
         owned_accounts_merkle_proofs: all_merkle_proofs.owned_accounts_merkle_proofs,

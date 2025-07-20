@@ -12,7 +12,7 @@ use sha3::{Digest, Keccak256};
 pub fn sign_ethereum_message(
     message: &[u8],
     private_key: &[u8; 32],
-) -> Result<[u8; 65], &'static str> {
+) -> Result<(Signature, RecoveryId), &'static str> {
     // Create signing key from private key
     let secret_key = SecretKey::from_slice(private_key).map_err(|_| "Invalid private key")?;
     let signing_key = SigningKey::from(secret_key);
@@ -25,60 +25,53 @@ pub fn sign_ethereum_message(
     let message_hash = Keccak256::digest(&full_message);
 
     // Sign with recovery
-    let (signature, recovery_id) = signing_key
+    let full_signature = signing_key
         .sign_prehash_recoverable(&message_hash)
         .map_err(|_| "Failed to sign message")?;
 
     // Combine signature and recovery ID
-    let mut sig_bytes = [0u8; 65];
-    sig_bytes[..64].copy_from_slice(&signature.to_bytes());
-    sig_bytes[64] = recovery_id.to_byte();
+    // let mut sig_bytes = [0u8; 65];
+    // sig_bytes[..64].copy_from_slice(&signature.to_bytes());
+    // sig_bytes[64] = recovery_id.to_byte();
+    // let sig_bytes = signature.0.to_bytes();
 
-    Ok(sig_bytes)
+    Ok(full_signature)
 }
-pub fn verify_ethereum_signature(
-    message: &[u8],
-    signature: &[u8; 65],
+
+pub fn verify_ethereum_msg_signature(
+    message: &str,
+    signature: Signature,
+    recovery_id: RecoveryId,
     expected_address: Address,
 ) -> Result<bool, &'static str> {
-    // Parse signature
-    let recovery_id = RecoveryId::try_from(signature[64]).map_err(|_| "Invalid recovery ID")?;
-    let sig = Signature::try_from(&signature[..64]).map_err(|_| "Invalid signature")?;
+    let message_bytes = message.as_bytes();
     // Create Ethereum message hash
-    let prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
+    let prefix = format!("\x19Ethereum Signed Message:\n{}", message_bytes.len());
     let mut full_message = prefix.into_bytes();
-    full_message.extend_from_slice(message);
-
+    full_message.extend_from_slice(message_bytes);
     let message_hash = Keccak256::digest(&full_message);
 
-    // Recover public key
-    let recovered_key = VerifyingKey::recover_from_prehash(&message_hash, &sig, recovery_id)
-        .map_err(|_| "Failed to recover public key")?;
-
-    // Convert to Ethereum address
-    let public_key_bytes = recovered_key.to_encoded_point(false);
-    let pub_key_hash = Keccak256::digest(&public_key_bytes.as_bytes()[1..]);
-    let derived_address = Address::from_slice(&pub_key_hash[12..]);
-
-    Ok(derived_address == expected_address)
+    return verify_ethereum_signature(&message_hash, &signature, recovery_id, &expected_address);
 }
 
-pub fn verify_ethereum_signature2(
+pub fn verify_ethereum_signature(
     message_hash: &GenericArray<
         u8,
         UInt<UInt<UInt<UInt<UInt<UInt<UTerm, B1>, B0>, B0>, B0>, B0>, B0>,
     >,
-    signature: &[u8; 65],
-    expected_address: Address,
+    signature: &Signature,
+    recovery_id: RecoveryId,
+    expected_address: &Address,
 ) -> Result<bool, &'static str> {
-    // Parse signature
-    let recovery_id = RecoveryId::try_from(signature[64]).map_err(|_| "Invalid recovery ID")?;
-    let sig = Signature::try_from(&signature[..64]).map_err(|_| "Invalid signature")?;
-
-    // let message_hash = Keccak256::digest(full_message);
+    // Create Ethereum message hash
+    // let prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
+    // let mut full_message = prefix.into_bytes();
+    // full_message.extend_from_slice(message);
+    //
+    // let message_hash = Keccak256::digest(&full_message);
 
     // Recover public key
-    let recovered_key = VerifyingKey::recover_from_prehash(&message_hash, &sig, recovery_id)
+    let recovered_key = VerifyingKey::recover_from_prehash(message_hash, signature, recovery_id)
         .map_err(|_| "Failed to recover public key")?;
 
     // Convert to Ethereum address
@@ -86,11 +79,12 @@ pub fn verify_ethereum_signature2(
     let pub_key_hash = Keccak256::digest(&public_key_bytes.as_bytes()[1..]);
     let derived_address = Address::from_slice(&pub_key_hash[12..]);
 
-    Ok(derived_address == expected_address)
+    Ok(expected_address.eq(&derived_address))
 }
+
 pub fn verify_all_signatures(
     message: &str,
-    all_signatures: &Vec<[u8; 65]>,
+    all_signatures: &Vec<(Signature, RecoveryId)>,
     all_addresses: &Vec<Address>,
 ) -> bool {
     let message_bytes = message.as_bytes();
@@ -100,8 +94,13 @@ pub fn verify_all_signatures(
     full_message.extend_from_slice(message_bytes);
     let message_hash = Keccak256::digest(&full_message);
     for (index, signature) in all_signatures.iter().enumerate() {
-        let is_valid =
-            verify_ethereum_signature2(&message_hash, &signature, all_addresses[index]).unwrap();
+        let is_valid = verify_ethereum_signature(
+            &message_hash,
+            &signature.0,
+            signature.1,
+            &all_addresses[index],
+        )
+        .unwrap();
         if !is_valid {
             return false;
         }
@@ -110,8 +109,11 @@ pub fn verify_all_signatures(
     return true;
 }
 
-pub fn generate_all_signatures(user_private_keys: Vec<[u8; 32]>, message: &str) -> Vec<[u8; 65]> {
-    let mut all_signatures: Vec<[u8; 65]> = vec![];
+pub fn generate_all_signatures(
+    user_private_keys: Vec<[u8; 32]>,
+    message: &str,
+) -> Vec<(Signature, RecoveryId)> {
+    let mut all_signatures: Vec<(Signature, RecoveryId)> = vec![];
 
     for private_key in user_private_keys {
         let sig = sign_ethereum_message(&message.as_bytes(), &private_key).unwrap();
@@ -137,21 +139,38 @@ mod tests {
             Address::from_slice(&hex::decode("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266").unwrap());
 
         // Message to sign
-        let message = b"Hello, RISC Zero!";
+        let message = "Hello, RISC Zero!";
+        let prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
+        let mut full_message = prefix.into_bytes();
+        full_message.extend_from_slice(message.as_bytes());
+
+        let message_hash = Keccak256::digest(&full_message);
 
         // Sign the message
-        let signature =
-            sign_ethereum_message(message, &anvil_private_key.try_into().unwrap()).unwrap();
+        let full_signature =
+            sign_ethereum_message(message.as_bytes(), &anvil_private_key.try_into().unwrap())
+                .unwrap();
 
         // Verify the signature
-        let is_valid = verify_ethereum_signature(message, &signature, anvil_address).unwrap();
+        let is_valid = verify_ethereum_signature(
+            &message_hash,
+            &full_signature.0,
+            full_signature.1,
+            &anvil_address,
+        )
+        .unwrap();
 
         assert!(is_valid, "Signature verification should pass");
 
         // Test with different message (should fail)
-        let different_message = b"Different message";
-        let is_valid_different =
-            verify_ethereum_signature(different_message, &signature, anvil_address).unwrap();
+        let different_message = "Different message";
+        let is_valid_different = verify_ethereum_msg_signature(
+            different_message,
+            full_signature.0,
+            full_signature.1,
+            anvil_address,
+        )
+        .unwrap();
 
         assert!(
             !is_valid_different,
@@ -161,8 +180,13 @@ mod tests {
         // Test with different address (should fail)
         let different_address =
             Address::from_slice(&hex::decode("70997970C51812dc3A010C7d01b50e0d17dc79C8").unwrap());
-        let is_valid_different_address =
-            verify_ethereum_signature(message, &signature, different_address).unwrap();
+        let is_valid_different_address = verify_ethereum_msg_signature(
+            message,
+            full_signature.0,
+            full_signature.1,
+            different_address,
+        )
+        .unwrap();
 
         assert!(
             !is_valid_different_address,
@@ -170,8 +194,8 @@ mod tests {
         );
 
         println!("✅ All tests passed!");
-        println!("Message: {}", String::from_utf8_lossy(message));
-        println!("Signature: {}", hex::encode(signature));
+        println!("Message: {}", String::from_utf8_lossy(message.as_bytes()));
+        println!("Signature: {:?}", full_signature);
         println!("Address: {}", anvil_address);
     }
 
@@ -204,10 +228,10 @@ mod tests {
         let message = "Multi-signature test message";
 
         // Generate all signatures
-        let signatures = generate_all_signatures(anvil_private_keys.clone(), message);
+        let full_signatures = generate_all_signatures(anvil_private_keys.clone(), message);
 
         // Verify we got the right number of signatures
-        assert_eq!(signatures.len(), 5, "Should generate 5 signatures");
+        assert_eq!(full_signatures.len(), 5, "Should generate 5 signatures");
 
         // Verify each signature individually
         let anvil_addresses = vec![
@@ -218,10 +242,14 @@ mod tests {
             Address::from_slice(&hex::decode("15d34AAf54267DB7D7c367839AAf71A00a2C6A65").unwrap()), // Account 4
         ];
 
-        for (i, signature) in signatures.iter().enumerate() {
-            let is_valid =
-                verify_ethereum_signature(message.as_bytes(), signature, anvil_addresses[i])
-                    .unwrap();
+        for (i, full_signature) in full_signatures.iter().enumerate() {
+            let is_valid = verify_ethereum_msg_signature(
+                message,
+                full_signature.0,
+                full_signature.1,
+                anvil_addresses[i],
+            )
+            .unwrap();
             assert!(is_valid, "Signature {} should be valid", i);
         }
 

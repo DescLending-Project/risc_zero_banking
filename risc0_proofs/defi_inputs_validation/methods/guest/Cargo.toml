@@ -6,10 +6,12 @@ edition = "2021"
 [workspace]
 
 [dependencies]
-risc0-zkvm = { version = "2.1.0", default-features = false, features = ['std'] }
+risc0-zkvm = { version = "2.1.0", default-features = false, features = ['std', 'unstable']  }
+risc0-bigint2 = "1.4.6"
 merkle_verifier_core = { path = "../../../../lib/core/merkle_verifier_core/",default-features = false }
 signature_verifier_core = { path = "../../../../lib/core/signature_verifier_core/",default-features = false }
 nullifier_verifier_core = { path = "../../../../lib/core/nullifier_verifier_core/",default-features = false }
 shared = {path = "../../shared/"}
 ethereum-types = "0.14"
 serde="1.0"
+k256 = { git = "https://github.com/risc0/RustCrypto-elliptic-curves" }
