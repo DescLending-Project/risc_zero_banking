@@ -3,8 +3,9 @@ name = "methods"
 version = "0.1.0"
 edition = "2021"
 
+
 [build-dependencies]
-risc0-build = { version = "2.1.0" }
+risc0-build = { version = "2.1.0", default-features = false, features = ['unstable'] }
 
 
 [package.metadata.risc0]
