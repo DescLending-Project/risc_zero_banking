@@ -26,8 +26,11 @@ fn main() {
     let mut now = start;
 
     // 1. Verifying all owned account proofs and get the total eth balance of all owned accounts
-    let total_eth_balance: U256 =
+    let total_wei_balance: U256 =
         verify_all_account_proofs(&owned_accounts_merkle_proofs, &owned_accounts_addresses);
+    let eth_divisor = U256::exp10(18); // 10^18
+    let total_eth_balance = total_wei_balance / eth_divisor;
+
     now = env::cycle_count();
     eprintln!("{}: verify_all_account_proofs ", now - last);
     last = now;
@@ -52,11 +55,11 @@ fn main() {
         .eq(contract_address.as_bytes()));
 
     // 3. Verifying merklpe proofs of all storge slots of the user and retriving their values
-    // NOTE: we use the verifeid contracts  storage root from the step 2
-    // TODO: add the verification of storage fileds calculation otherwise user can provided not his
-    // storage fields
-    let user_history_data =
-        verify_all_storage_proofs(&storage_merkle_proofs, &contract.storage_root);
+    let user_history_data = verify_all_storage_proofs(
+        &storage_merkle_proofs,
+        &contract.storage_root,
+        &user_address,
+    );
     assert!(user_history_data.len() == 4, "User Histor data mismatch");
 
     now = env::cycle_count();

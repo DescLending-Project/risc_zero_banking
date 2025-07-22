@@ -51,6 +51,7 @@ async fn defi_inputs_validation_test() {
     let user_history_data = verify_all_storage_proofs(
         &all_merkle_proofs.user_history_proof.storage_merkle_proofs,
         &contract.storage_root,
+        &user_owned_addresses[0],
     );
 
     // 4. verify the signatures
@@ -152,6 +153,7 @@ async fn defi_inputs_fetch_and_validation_test() {
     let user_history_data = verify_all_storage_proofs(
         &all_merkle_proofs.user_history_proof.storage_merkle_proofs,
         &contract.storage_root,
+        &user_owned_addresses[0],
     );
 
     // 4. verify the signatures
