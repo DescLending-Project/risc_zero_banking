@@ -333,16 +333,65 @@ pub fn verify_all_account_proofs(
     }
     return total_eth_balance;
 }
+/// Calculate storage slot for mapping(address => UserHistory) users
+pub fn calculate_mapping_slot(user_address: &Address, mapping_slot: U256) -> H256 {
+    // For mapping(address => UserHistory), storage slot = keccak256(abi.encodePacked(key, slot))
+    let mut data = Vec::new();
+
+    // Add user address (32 bytes, left-padded)
+    let mut addr_bytes = [0u8; 32];
+    addr_bytes[12..].copy_from_slice(user_address.as_bytes());
+    data.extend_from_slice(&addr_bytes);
+
+    // Add mapping slot (32 bytes)
+    let mut slot_bytes = [0u8; 32];
+    mapping_slot.to_big_endian(&mut slot_bytes);
+    data.extend_from_slice(&slot_bytes);
+
+    let hash: [u8; 32] = Keccak256::digest(&data).into();
+    // let xd = Keccak256::digest(&data);
+    // H256(Keccak256::digest(&data).into())
+    H256::from(hash)
+}
+
+pub fn calculate_struct_slots(base_slot: H256) -> [H256; 4] {
+    let base_u256 = U256::from_big_endian(base_slot.as_bytes());
+
+    let slot1 = base_u256 + U256::one();
+    let slot2 = base_u256 + U256::from(2);
+    let slot3 = base_u256 + U256::from(3);
+
+    let mut slot1_bytes = [0u8; 32];
+    let mut slot2_bytes = [0u8; 32];
+    let mut slot3_bytes = [0u8; 32];
+    slot1.to_big_endian(&mut slot1_bytes);
+    slot2.to_big_endian(&mut slot2_bytes);
+    slot3.to_big_endian(&mut slot3_bytes);
+
+    [
+        base_slot,               // firstInteractionTimestamp
+        H256::from(slot1_bytes), // liquidations
+        H256::from(slot2_bytes), // successfulPayments
+        H256::from(slot3_bytes), // total_dept
+    ]
+}
 pub fn verify_all_storage_proofs(
     storage_proofs: &Vec<StorageMerkleProof>,
     state_root: &H256,
+    user_address: &Address,
 ) -> Vec<U256> {
+    let mapping_slot = U256::zero(); //NOTE: here it is assumed that  users mapping is at slot 0 of the contratc. TODO: THis should be dynamicly set!
+    let user_base_slot = calculate_mapping_slot(user_address, mapping_slot);
+    let user_hisotry_slots = calculate_struct_slots(user_base_slot);
     let mut values: Vec<U256> = vec![];
     // println!("{:?}", storage_proofs);
     for (index, proof) in storage_proofs.iter().enumerate() {
         print!("Index {:?} val: ", index);
         // Checking if the state_root is correct
         assert!(proof.state_root.eq(state_root), "State roots mismatch");
+        // Check if the field is the field owned by the user
+        assert!(proof.key.eq(user_hisotry_slots[index].as_bytes()));
+
         let value = match verify_storage_proof(proof.state_root, &proof.key, &proof.storage_proof) {
             Ok(Some(val)) => val,
             Ok(None) => panic!("Storage proof verification failed - no return data"),
