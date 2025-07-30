@@ -305,34 +305,6 @@ pub fn verify_storage_proof(
     }
 }
 
-pub fn verify_all_account_proofs(
-    owned_accounts_merkle_proofs: &Vec<AccountMerkleProof>,
-    owned_accounts_addresses: &Vec<Address>,
-) -> U256 {
-    let mut total_eth_balance: U256 = U256::from(0);
-    for (index, proof) in owned_accounts_merkle_proofs.iter().enumerate() {
-        print!("{:?}", index);
-        let account: AccountData =
-            match verify_account_proof(proof.state_root, &proof.address, &proof.account_proof) {
-                Ok(Some(account_data)) => account_data,
-                Ok(None) => panic!("Account proof verification failed - no account data"),
-                Err(e) => panic!(
-                    "Account proof verification error : {:?} \n for the proof {:?}",
-                    e, proof
-                ),
-            };
-        assert!(
-            proof
-                .address
-                .eq(&owned_accounts_addresses[index].as_bytes()),
-            "Account address and AccountMerkleProof address mismatch"
-        );
-
-        total_eth_balance += account.balance;
-        // println!("{:?}", account);
-    }
-    return total_eth_balance;
-}
 /// Calculate storage slot for mapping(address => UserHistory) users
 pub fn calculate_mapping_slot(user_address: &Address, mapping_slot: U256) -> H256 {
     // For mapping(address => UserHistory), storage slot = keccak256(abi.encodePacked(key, slot))
@@ -388,7 +360,12 @@ pub fn verify_all_storage_proofs(
     for (index, proof) in storage_proofs.iter().enumerate() {
         print!("Index {:?} val: ", index);
         // Checking if the state_root is correct
-        assert!(proof.state_root.eq(state_root), "State roots mismatch");
+        assert!(
+            proof.state_root.eq(state_root),
+            "State roots mismatch expected {:?} got {:?}",
+            state_root,
+            proof.state_root
+        );
         // Check if the field is the field owned by the user
         assert!(proof.key.eq(user_hisotry_slots[index].as_bytes()));
 
@@ -403,4 +380,41 @@ pub fn verify_all_storage_proofs(
         values.push(value);
     }
     return values;
+}
+
+pub fn verify_all_account_proofs(
+    owned_accounts_merkle_proofs: &Vec<AccountMerkleProof>,
+    owned_accounts_addresses: &Vec<Address>,
+    state_root: &H256,
+) -> U256 {
+    let mut total_eth_balance: U256 = U256::from(0);
+    for (index, proof) in owned_accounts_merkle_proofs.iter().enumerate() {
+        print!("{:?}", index);
+
+        assert!(
+            proof.state_root.eq(state_root),
+            "State roots mismatch expected {:?} got {:?}",
+            state_root,
+            proof.state_root
+        );
+        let account: AccountData =
+            match verify_account_proof(proof.state_root, &proof.address, &proof.account_proof) {
+                Ok(Some(account_data)) => account_data,
+                Ok(None) => panic!("Account proof verification failed - no account data"),
+                Err(e) => panic!(
+                    "Account proof verification error : {:?} \n for the proof {:?}",
+                    e, proof
+                ),
+            };
+        assert!(
+            proof
+                .address
+                .eq(&owned_accounts_addresses[index].as_bytes()),
+            "Account address and AccountMerkleProof address mismatch"
+        );
+
+        total_eth_balance += account.balance;
+        // println!("{:?}", account);
+    }
+    return total_eth_balance;
 }

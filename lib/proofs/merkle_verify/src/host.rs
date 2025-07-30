@@ -28,19 +28,20 @@ async fn defi_inputs_validation_test() {
     let all_merkle_proofs = load_all_merkle_proofs("all_merkle_proofs.json").unwrap();
     let user_owned_addresses = load_user_owned_addresses("user_owned_addresses.json").unwrap();
 
-    // the verification logic == stuff that needs to be runed in the guest
+    let trusted_state_root = all_merkle_proofs.user_history_proof.state_root;
 
     // 1. Verifying all owned account proofs and getting the total eth balance of all owned accounts
     let mut total_eth_balance: U256 = verify_all_account_proofs(
         &all_merkle_proofs.owned_accounts_merkle_proofs,
         &user_owned_addresses,
+        &trusted_state_root,
     );
 
     // 2. Verifying merkle proof of lending contract to ensure that defi data came from our
     //    contract
     let contract_merkle_proof = all_merkle_proofs.user_history_proof.contract_merkle_proof;
     let contract = verify_account_proof(
-        contract_merkle_proof.state_root,
+        trusted_state_root.clone(),
         &contract_merkle_proof.address,
         &contract_merkle_proof.account_proof,
     )
@@ -132,17 +133,19 @@ async fn defi_inputs_fetch_and_validation_test() {
 
     // the verification logic == stuff that needs to be runed in the guest
 
+    let trusted_state_root = all_merkle_proofs.user_history_proof.state_root;
     // 1. Verifying all owned account proofs and getting the total eth balance of all owned accounts
     let mut total_eth_balance: U256 = verify_all_account_proofs(
         &all_merkle_proofs.owned_accounts_merkle_proofs,
         &user_owned_addresses,
+        &trusted_state_root,
     );
 
     // 2. Verifying merkle proof of lending contract to ensure that defi data came from our
     //    contract
     let contract_merkle_proof = all_merkle_proofs.user_history_proof.contract_merkle_proof;
     let contract = verify_account_proof(
-        contract_merkle_proof.state_root,
+        trusted_state_root.clone(),
         &contract_merkle_proof.address,
         &contract_merkle_proof.account_proof,
     )

@@ -34,6 +34,7 @@ fn main() {
         contract_address: all_merkle_proofs.user_history_proof.contract_address,
         user_address: all_merkle_proofs.user_history_proof.user_address,
         message: message.to_string(),
+        trusted_state_root: all_merkle_proofs.user_history_proof.state_root,
     };
 
     // passing inputs to the guest
