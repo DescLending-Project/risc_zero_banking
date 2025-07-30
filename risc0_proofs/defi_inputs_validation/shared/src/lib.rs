@@ -22,6 +22,7 @@ pub struct DefiProofInput {
     pub contract_address: Address,
     pub user_address: Address,
     pub message: String,
+    pub trusted_state_root: H256,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -40,6 +41,7 @@ pub struct DefiProofOutput {
     pub liquidations: U256,
     pub on_time_payments: U256,
     pub current_debt: U256,
+    pub trusted_state_root: H256,
 }
 
 fn serialize_signatures<S>(signatures: &Vec<[u8; 65]>, serializer: S) -> Result<S::Ok, S::Error>

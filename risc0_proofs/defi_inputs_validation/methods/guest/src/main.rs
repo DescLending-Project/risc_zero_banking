@@ -19,6 +19,7 @@ fn main() {
         contract_address,
         user_address,
         message,
+        trusted_state_root,
     } = env::read();
 
     let start = env::cycle_count();
@@ -26,8 +27,11 @@ fn main() {
     let mut now = start;
 
     // 1. Verifying all owned account proofs and get the total eth balance of all owned accounts
-    let total_wei_balance: U256 =
-        verify_all_account_proofs(&owned_accounts_merkle_proofs, &owned_accounts_addresses);
+    let total_wei_balance: U256 = verify_all_account_proofs(
+        &owned_accounts_merkle_proofs,
+        &owned_accounts_addresses,
+        &trusted_state_root,
+    );
     let eth_divisor = U256::exp10(18); // 10^18
     let total_eth_balance = total_wei_balance / eth_divisor;
 
@@ -39,7 +43,7 @@ fn main() {
     //    contract
     //  2.1 Verify merkle proof
     let contract = verify_account_proof(
-        contract_merkle_proof.state_root,
+        trusted_state_root.clone(),
         &contract_merkle_proof.address,
         &contract_merkle_proof.account_proof,
     )
@@ -96,6 +100,7 @@ fn main() {
         liquidations: user_history_data[1],
         on_time_payments: user_history_data[2],
         current_debt: user_history_data[3],
+        trusted_state_root,
     };
 
     // write public output to the journal
