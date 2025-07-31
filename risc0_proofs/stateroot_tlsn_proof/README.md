@@ -32,6 +32,6 @@ To skip the extensive proof generation run quickly in dev mode:
 ```bash
 RISC0_USE_DOCKER=1 \
 RISC0_DEV_MODE=1 \
-cargo run -p host --release -- data/proof.json
+cargo run -p host --release -- data/stateroot_proof.json
 ```
 - `data/proof.json` path to TLSNotary proof to be verified.
