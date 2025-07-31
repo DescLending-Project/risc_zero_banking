@@ -10,26 +10,28 @@ use ethereum_types::{H256, U256};
 risc0_zkvm::guest::entry!(main);
 
 const TRADFI_PROOF_IMAGE_ID: [u32; 8] = [
-    0x81c6f5d0,
-    0x702b3a37,
-    0x3ce771fe,
-    0xbb63581e,
-    0xd62fbd6f,
-    0xf427e418,
-    0x2bb82714,
-    0x4e4a4c4c,
+    0xa959aab4,
+    0x03bb769a,
+    0x559fc152,
+    0xcbdcb7aa,
+    0x7682affb,
+    0x31a587a0,
+    0x45eea34f,
+    0xe98fa3b0,
 ];
 
+
 const ACCOUNT_PROOF_IMAGE_ID: [u32; 8] = [
-    0xb083f461,
-    0xf1de5891,
-    0x87ceac04,
-    0xa9eb2c0f,
-    0xd7c99b8c,
-    0x80f4ed3f,
-    0x3d45963c,
-    0x8b9606bf,
+    0xbb602230,
+    0x67951e01,
+    0xd4418e62,
+    0xe947bfa6,
+    0x610d6021,
+    0x78a63884,
+    0x0e4d6fc6,
+    0x9fe342a1,
 ];
+
 
 // Input structures 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,21 +64,59 @@ fn main() {
     let first_journal_bytes: Vec<u8> = env::read();
     let second_journal_bytes: Vec<u8> = env::read();
     
-    // 2) Verify both proofs
-    env::verify(TRADFI_PROOF_IMAGE_ID, &first_journal_bytes)
-        .expect("❌ TLSN proof verification failed");
+    // Debug: Check journal sizes
+    if first_journal_bytes.is_empty() {
+        panic!("First journal is empty!");
+    }
+    if second_journal_bytes.is_empty() {
+        panic!("Second journal is empty!");
+    }
     
-    env::verify(ACCOUNT_PROOF_IMAGE_ID, &second_journal_bytes)
-        .expect("❌ Ethereum account proof verification failed");
+    // 2) Verify both proofs with better error handling
+    if let Err(e) = env::verify(TRADFI_PROOF_IMAGE_ID, &first_journal_bytes) {
+        // Create error output instead of panicking
+        let error_output = HybridCreditScore {
+            score: 0,
+            server_name: "TRADFI_VERIFICATION_FAILED".into(),
+        };
+        env::commit(&error_output);
+        return;
+    }
     
-    // 3) Decode the verified journals
-    let tradfi_data: VerificationOutput = 
-        risc0_zkvm::serde::from_slice(&first_journal_bytes)
-        .expect("Failed to decode Tradfi-TLSN data");
+    if let Err(e) = env::verify(ACCOUNT_PROOF_IMAGE_ID, &second_journal_bytes) {
+        // Create error output instead of panicking
+        let error_output = HybridCreditScore {
+            score: 0,
+            server_name: "ACCOUNT_VERIFICATION_FAILED".into(),
+        };
+        env::commit(&error_output);
+        return;
+    }
     
-    let defi_data: ProofOutput = 
-        risc0_zkvm::serde::from_slice(&second_journal_bytes)
-        .expect("Failed to decode Ethereum account data");
+    // 3) Decode the verified journals with error handling
+    let tradfi_data: VerificationOutput = match risc0_zkvm::serde::from_slice(&first_journal_bytes) {
+        Ok(data) => data,
+        Err(_) => {
+            let error_output = HybridCreditScore {
+                score: 0,
+                server_name: "TRADFI_DECODE_FAILED".into(),
+            };
+            env::commit(&error_output);
+            return;
+        }
+    };
+    
+    let defi_data: ProofOutput = match risc0_zkvm::serde::from_slice(&second_journal_bytes) {
+        Ok(data) => data,
+        Err(_) => {
+            let error_output = HybridCreditScore {
+                score: 0,
+                server_name: "ACCOUNT_DECODE_FAILED".into(),
+            };
+            env::commit(&error_output);
+            return;
+        }
+    };
     
     // 4) Validate TradFi score is valid
     if !tradfi_data.is_valid {
@@ -139,9 +179,12 @@ fn calculate_hybrid_credit_score(
     let weighted_defi = (final_defi_score as f64 * 0.4) as u64;
     let hybrid_score = weighted_tradfi + weighted_defi;
     
+    // Cap the score at 850 (FICO range)
+    let final_score = if hybrid_score > 850 { 850 } else { hybrid_score };
+    
     // Only return the minimal data needed on-chain
     HybridCreditScore {
-        score: hybrid_score,
+        score: final_score,
         server_name: tradfi_data.server_name.clone(),
     }
 }
