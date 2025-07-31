@@ -21,26 +21,29 @@ risc0_zkvm::guest::entry!(main);
 
 /// 33-byte compressed SEC-1 form of the Notary's public key
 const EXPECTED_COMPRESSED_HEX: &str =
-    "02d4cbba990b0c2eb1dd45b29c7d26075299f1ea39317f35140e6ef71e703beda7";
+    "037b48f19c139b6888fb5e383a4d72c2335186fd5858e7ae743ab4bf8e071b06e7";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct VerificationOutput {
     is_valid: bool,
     server_name: String,
-    score: Option<u64>,
+    value: Option<u64>,
     error: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct InputProofJson {
-    #[serde(rename = "presentationJson")]
-    presentation_json: InputPresentationData,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct InputPresentationData {
     version: String,
     data: String,
+    meta: MetaData
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct MetaData {
+    #[serde(rename = "notaryUrl")]
+    notary_url: String,
+    #[serde(rename = "websocketProxyUrl")]
+    websocket_proxy_url: String
 }
 
 fn main() {
@@ -49,12 +52,12 @@ fn main() {
     let mut output = VerificationOutput {
         is_valid: false,
         server_name: String::new(),
-        score: None,
+        value: None,
         error: None,
     };
 
     // Parse outer JSON
-    let input: InputProofJson = match serde_json::from_str(&proof_json) {
+    let input: InputPresentationData = match serde_json::from_str(&proof_json) {
         Ok(v) => v,
         Err(e) => {
             output.error = Some(format!("Failed to parse outer JSON: {}", e));
@@ -64,7 +67,7 @@ fn main() {
     };
 
     // Hex-decode bincode payload
-    let proof_bytes = match hex::decode(&input.presentation_json.data) {
+    let proof_bytes = match hex::decode(&input.data) {
         Ok(b) => b,
         Err(e) => {
             output.error = Some(format!("Failed to hex-decode data: {}", e));
@@ -114,33 +117,16 @@ fn main() {
     // Extract score if present
     if let Some(transcript) = pres_out.transcript {
         if let Ok(s) = str::from_utf8(transcript.received_unsafe()) {
-            if let Some(val) = s.split("score=").nth(1) {
-                output.score = val
-                    .split(&['&', '"'][..])
-                    .next()
-                    .and_then(|num| num.parse().ok());
+            // output.error = Some(s.parse().unwrap());
+            if let Some(val) = s.split("value\":").nth(1) {
+                output.value = val
+                    .chars()
+                    .take_while(|c| c.is_digit(10))  // Take only digits
+                    .collect::<String>()
+                    .parse()
+                    .ok();
             }
         }
     }
-
-    // Examplary: enforce minimum score threshold 
-    match output.score {
-        Some(score_val) if score_val > 5 => {
-            // OK: above threshold
-        }
-        Some(score_val) => {
-            output.error = Some(format!("Score {} is below the required threshold of 5", score_val));
-            output.is_valid = false;
-            env::commit(&output);
-            return;
-        }
-        None => {
-            output.error = Some("Score missing or could not be parsed".to_string());
-            output.is_valid = false;
-            env::commit(&output);
-            return;
-        }
-    }
-
     env::commit(&output);
 }

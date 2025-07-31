@@ -1,7 +1,7 @@
-use std::{fs, path::PathBuf};
+use std::{env, fs, path::PathBuf};
 use anyhow::Result;
 use methods::{PROOF_VERIFIER_GUEST_ELF, PROOF_VERIFIER_GUEST_ID};
-use risc0_zkvm::{default_prover, ExecutorEnv};
+use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, ReceiptKind}; 
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -13,46 +13,44 @@ struct VerificationOutput {
 }
 
 fn main() -> Result<()> {
-    // Read proof.json
-    let proof_path = PathBuf::from("data").join("proof.json");
-    let proof_json = fs::read_to_string(&proof_path).map_err(|e| {
-        anyhow::anyhow!("Failed to read proof file {}: {}", proof_path.display(), e)
-    })?;
-
+    let proof_path = env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow::anyhow!("Usage: program <path-to-proof.json>"))?;
+    let proof_json = fs::read_to_string(&proof_path)?;
+    
     let env = ExecutorEnv::builder().write(&proof_json)?.build()?;
     let prover = default_prover();
-    println!("Running the prover...");
     
-    // Execute guest, produce Receipt
-    let prove_info = prover.prove(env, PROOF_VERIFIER_GUEST_ELF)?;
+    println!("Running the prover...");
+    let opts = ProverOpts::succinct();
+    let prove_info = prover.prove_with_opts(env, PROOF_VERIFIER_GUEST_ELF, &opts)?;
+    
     println!("Proving finished.");
     let receipt = prove_info.receipt;
-
-    // Verify receipt against expected ImageID
     receipt.verify(PROOF_VERIFIER_GUEST_ID)?;
     println!("Receipt verification successful!");
-
-    // Decode journal
+    
     let output: VerificationOutput = receipt.journal.decode()?;
     println!("\nGuest Output:");
     println!(" Is Valid: {}", output.is_valid);
     println!(" Server Name: {}", output.server_name);
+    
     if let Some(score) = output.score {
         println!(" Score: {}", score);
         if output.is_valid && score > 5 {
-            println!("\nSuccessfully verified proof and extracted score: {} (above threshold of 5)", score);
+            println!("\nSuccessfully verified proof and extracted score: {}", score);
         }
     }
+    
     if let Some(err_msg) = output.error {
         println!(" Error: {}", err_msg);
     }
-
-    // Save the receipt to receipt.bin
-    println!("\nSaving receipt to receipt.bin...");
+    
+    println!("\nSaving receipt to tradfi_score.bin...");
     let receipt_bytes = bincode::serialize(&receipt)?;
-    let bytes_len = receipt_bytes.len();
-    fs::write("receipt.bin", receipt_bytes)?;
-    println!("Receipt saved to receipt.bin ({} bytes)", bytes_len);
-
+    fs::write("tradfi_score.bin", &receipt_bytes)?;
+    println!("Receipt saved to tradfi_score.bin ({} bytes)", receipt_bytes.len());
+    
     Ok(())
 }
