@@ -1,12 +1,11 @@
 #![no_std]
 #![no_main]
-
 extern crate alloc;
 use alloc::{
     format, str,
     string::{String, ToString},
+    vec::Vec,
 };
-
 use bincode;
 use hex;
 use risc0_zkvm::guest::env;
@@ -27,7 +26,9 @@ const EXPECTED_COMPRESSED_HEX: &str =
 struct VerificationOutput {
     is_valid: bool,
     server_name: String,
-    value: Option<u64>,
+    score: Option<u64>,
+    user_id: Option<String>,
+    date: Option<String>, // YYYY-MM-DD format
     error: Option<String>,
 }
 
@@ -35,7 +36,7 @@ struct VerificationOutput {
 struct InputPresentationData {
     version: String,
     data: String,
-    meta: MetaData
+    meta: MetaData,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -43,16 +44,38 @@ struct MetaData {
     #[serde(rename = "notaryUrl")]
     notary_url: String,
     #[serde(rename = "websocketProxyUrl")]
-    websocket_proxy_url: String
+    websocket_proxy_url: String,
+}
+
+// Structs to parse the API response JSON
+#[derive(Debug, Serialize, Deserialize)]
+struct ApiResponse {
+    data: ApiData,
+    message: String,
+    path: String,
+    timestamp: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ApiData {
+    score: ScoreData,
+    #[serde(rename = "userId")]
+    user_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ScoreData {
+    value: u64,
 }
 
 fn main() {
     let proof_json: String = env::read();
-
     let mut output = VerificationOutput {
         is_valid: false,
         server_name: String::new(),
-        value: None,
+        score: None,
+        user_id: None,
+        date: None,
         error: None,
     };
 
@@ -91,7 +114,7 @@ fn main() {
     let embedded_hex = hex::encode(&embedded_vk.data);
     if embedded_hex != EXPECTED_COMPRESSED_HEX {
         output.error = Some(format!(
-            "Key mismatch:\n  embedded = {}\n  expected = {}",
+            "Key mismatch:\n embedded = {}\n expected = {}",
             embedded_hex, EXPECTED_COMPRESSED_HEX,
         ));
         env::commit(&output);
@@ -113,20 +136,58 @@ fn main() {
     if let Some(sn) = pres_out.server_name {
         output.server_name = sn.to_string();
     }
+
     output.is_valid = true;
-    // Extract score if present
+
+    // Extract structured data from transcript
     if let Some(transcript) = pres_out.transcript {
-        if let Ok(s) = str::from_utf8(transcript.received_unsafe()) {
-            // output.error = Some(s.parse().unwrap());
-            if let Some(val) = s.split("value\":").nth(1) {
-                output.value = val
-                    .chars()
-                    .take_while(|c| c.is_digit(10))  // Take only digits
-                    .collect::<String>()
-                    .parse()
-                    .ok();
+        if let Ok(response_text) = str::from_utf8(transcript.received_unsafe()) {
+            // Try to parse the full JSON structure
+            if let Ok(api_response) = serde_json::from_str::<ApiResponse>(response_text) {
+                // Extract score
+                output.score = Some(api_response.data.score.value);
+                
+                // Extract user ID
+                output.user_id = Some(api_response.data.user_id);
+                
+                // Extract and format date (YYYY-MM-DD from timestamp)
+                output.date = extract_date_from_timestamp(&api_response.timestamp);
+            } else {
+                // Fallback: try to extract score the old way
+                if let Some(val) = response_text.split("value\":").nth(1) {
+                    output.score = val
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect::<String>()
+                        .parse()
+                        .ok();
+                }
+                
+                // Try to extract userId
+                if let Some(user_part) = response_text.split("\"userId\":\"").nth(1) {
+                    if let Some(user_id) = user_part.split("\"").next() {
+                        output.user_id = Some(user_id.to_string());
+                    }
+                }
+                
+                // Try to extract timestamp
+                if let Some(ts_part) = response_text.split("\"timestamp\":\"").nth(1) {
+                    if let Some(timestamp) = ts_part.split("\"").next() {
+                        output.date = extract_date_from_timestamp(timestamp);
+                    }
+                }
             }
         }
     }
+
     env::commit(&output);
+}
+
+// Extract YYYY-MM-DD from ISO timestamp like "2025-07-21T10:11:47.391983838Z"
+fn extract_date_from_timestamp(timestamp: &str) -> Option<String> {
+    if timestamp.len() >= 10 {
+        Some(timestamp[0..10].to_string()) // Take first 10 chars: "2025-07-21"
+    } else {
+        None
+    }
 }
