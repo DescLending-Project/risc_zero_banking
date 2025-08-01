@@ -22,6 +22,7 @@ contract CreditScoreDeploy is Script, RiscZeroCheats {
         // Default is the first profile with a matching chainId field.
         string memory config = vm.readFile(string.concat(vm.projectRoot(), "/", CONFIG_FILE));
         string memory configProfile = vm.envOr("CONFIG_PROFILE", string(""));
+        
         if (bytes(configProfile).length == 0) {
             string[] memory profileKeys = vm.parseTomlKeys(config, ".profile");
             for (uint256 i = 0; i < profileKeys.length; i++) {
@@ -43,6 +44,7 @@ contract CreditScoreDeploy is Script, RiscZeroCheats {
 
         uint256 deployerKey = uint256(vm.envOr("ETH_WALLET_PRIVATE_KEY", bytes32(0)));
         address deployerAddr = address(0);
+        
         if (deployerKey != 0) {
             // Check for conflicts in how the two environment variables are set.
             address envAddr = vm.envOr("ETH_WALLET_ADDRESS", address(0));
@@ -56,8 +58,9 @@ contract CreditScoreDeploy is Script, RiscZeroCheats {
             vm.startBroadcast(deployerAddr);
         }
 
-        // Deploy the verifier, if not already deployed.
+        // CRITICAL: Deploy a fresh verifier that matches RISC0 v2.1.0
         if (address(verifier) == address(0)) {
+            console2.log("Deploying fresh RiscZeroGroth16Verifier for v2.1.0...");
             verifier = deployRiscZeroVerifier();
         } else {
             console2.log("Using IRiscZeroVerifier contract deployed at", address(verifier));
