@@ -4,7 +4,7 @@
 This module allows you to run a **nested proof** and publish it on-chain.  
 
 - The **inner proofs** can be found in the [`host/receipts/`](./host/receipts) directory.  
-- Before running the publisher, ensure you have **deployed the required smart contracts** located in the [`Solidity/`](../Solidity) directory.
+- Before running the publisher, ensure you have **deployed the required smart contracts** located in the [`Solidity/`](../solidity) directory.
 
 ---
 ## Build the binaries
