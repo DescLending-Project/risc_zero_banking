@@ -1,12 +1,21 @@
 
-#Build and run publisher 
+# Build and Run Publisher
 
-#First head over to Solidity/ to deploy the necessary contracts before you run these
+This module allows you to run a **nested proof** and publish it on-chain.  
 
+- The **inner proofs** can be found in the [`host/receipts/`](./host/receipts) directory.  
+- Before running the publisher, ensure you have **deployed the required smart contracts** located in the [`Solidity/`](./Solidity) directory.
+
+---
+## Build the binaries
 
 ```bash
 RISC0_USE_DOCKER=1 cargo build --release
 ```
+## Use the following command to publish the proof on-chain:
+
+Note: Make sure your local Ethereum node (e.g., Hardhat or Anvil) is running and that the contract at the given address has been deployed.
+
 ```bash
 RISC0_USE_DOCKER=1 cargo run -p host --bin host --release -- \
   --first-receipt-path host/receipts/tradfi_tlsn_receipt.bin \
