@@ -1,0 +1,83 @@
+# Rust build artifacts
+/target/
+**/target/
+Cargo.lock
+
+# RISC Zero specific artifacts
+**/*.id
+**/*.elf
+**/*.stamp
+**/*.rs.in
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test artifacts
+**/*.profraw
+**/*.gcda
+**/*.gcno
+**/callgrind.out.*
+**/perf.data*
+**/flamegraph.svg
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Debug files
+**/*.dSYM/
+**/*.su
+**/*.idb
+**/*.pdb
+
+# Generated documentation
+/doc/
+/docs/
+
+# TLS Notary specific files (add more as needed)
+*.tlsn
+*.notary
+*.proof
+
+# Test data
+/test_data/personal/
+/test_data/confidential/
+
+# Script outputs
+/scripts/output/
+
+# Local configuration
+config.local.toml
+
+# Dependency directory (if using npm or other package managers)
+/node_modules/
+
+# Large files that shouldn't be in version control
+*.bin
+*.dat
+*.db
+*.sqlite
+*.sqlite3
+
+# Coverage reports
+/coverage/
+/htmlcov/
+/codecov/

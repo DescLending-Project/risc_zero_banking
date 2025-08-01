@@ -1,39 +1,32 @@
 #![no_std]
 #![no_main]
-
 extern crate alloc;
-use alloc::string::String;
-use alloc::vec::Vec;
-
+use alloc::{string::String, vec::Vec, vec};
 use risc0_zkvm::guest::env;
+use risc0_zkvm::serde::from_slice;
 use serde::{Deserialize, Serialize};
 use ethereum_types::{H256, U256};
+use score_calculation::{
+    CreditInput, PaymentHistory, TrustLevel, CreditScoreBreakdown,
+    calculate_score
+};
 
 risc0_zkvm::guest::entry!(main);
 
-// Proof image IDs
-const TRADFI_TLSN_PROOF_IMAGE_ID: [u32; 8] = [
-    0x81c6f5d0,
-    0x702b3a37,
-    0x3ce771fe,
-    0xbb63581e,
-    0xd62fbd6f,
-    0xf427e418,
-    0x2bb82714,
-    0x4e4a4c4c,
+const TRADFI_PROOF_IMAGE_ID: [u32; 8] = [
+    0x720afb3a, 0xe6dfd539, 0x727f1629, 0xb9653d26,
+    0x183da913, 0x168cb59c, 0xb70d0d1a, 0x063ce56b,
+];
+const ACCOUNT_PROOF_IMAGE_ID: [u32; 8] = [
+    0xbb602230, 0x67951e01, 0xd4418e62, 0xe947bfa6,
+    0x610d6021, 0x78a63884, 0x0e4d6fc6, 0x9fe342a1,
+];
+const STATEROOT_PROOF_IMAGE_ID: [u32; 8] = [
+    0xab8e6209, 0x1f2a7970, 0xacdd7e5d, 0xe74ca169,
+    0x2ed86810, 0x9189b237, 0x8a8b2512, 0x9706dfbb,
 ];
 
-const ETH_ACCOUNT_PROOF_IMAGE_ID: [u32; 8] = [
-    0xb083f461,
-    0xf1de5891,
-    0x87ceac04,
-    0xa9eb2c0f,
-    0xd7c99b8c,
-    0x80f4ed3f,
-    0x3d45963c,
-    0x8b9606bf,
-];
-
+// Input structures
 #[derive(Debug, Serialize, Deserialize)]
 struct VerificationOutput {
     is_valid: bool,
@@ -53,128 +46,209 @@ struct ProofOutput {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct HybridCreditScore {
-    score: u64,
+struct StateRootOutput {
+    is_valid: bool,
     server_name: String,
+    state_root: Option<String>,
+    block_number: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct HybridCreditScore {
+    score: u16, 
+    server_name: String,
+    state_root_provider: String,
+    block_number: u64,
+    breakdown: CreditScoreBreakdown,
 }
 
 fn main() {
-    // 1) Read the journal bytes
-    let first_journal: Vec<u8> = env::read();
-    let second_journal: Vec<u8> = env::read();
+    // 1) Read the journal bytes from all three proofs
+    let tradfi_journal_bytes: Vec<u8> = env::read();
+    let account_journal_bytes: Vec<u8> = env::read();
+    let stateroot_journal_bytes: Vec<u8> = env::read();
 
-    // 2) Verify both proofs
-    env::verify(TRADFI_TLSN_PROOF_IMAGE_ID, &first_journal)
-        .expect("❌ TLSN proof verification failed");
-    env::verify(ETH_ACCOUNT_PROOF_IMAGE_ID, &second_journal)
-        .expect("❌ Ethereum account proof verification failed");
-
-    // 3) Decode
-    let tradfi: VerificationOutput =
-        risc0_zkvm::serde::from_slice(&first_journal).expect("Failed to decode TLSN data");
-    let defi: ProofOutput =
-        risc0_zkvm::serde::from_slice(&second_journal).expect("Failed to decode Ethereum data");
-
-    // 4) If TradFi invalid, commit zero score
-    if !tradfi.is_valid {
-        let out = HybridCreditScore {
-            score: 0,
-            server_name: tradfi.server_name,
-        };
-        env::commit(&out);
+    // 2) Verify all three proofs
+    if let Err(_e) = env::verify(TRADFI_PROOF_IMAGE_ID, &tradfi_journal_bytes) {
+        commit_zero_score();
+        return;
+    }
+    if let Err(_e) = env::verify(ACCOUNT_PROOF_IMAGE_ID, &account_journal_bytes) {
+        commit_zero_score();
+        return;
+    }
+    if let Err(_e) = env::verify(STATEROOT_PROOF_IMAGE_ID, &stateroot_journal_bytes) {
+        commit_zero_score();
         return;
     }
 
-    // 5) Compute hybrid and commit
-    let hybrid = calculate_hybrid_credit_score(&tradfi, &defi);
-    env::commit(&hybrid);
-}
-
-fn calculate_hybrid_credit_score(
-    tradfi: &VerificationOutput,
-    defi: &ProofOutput,
-) -> HybridCreditScore {
-    let tradfi_score = tradfi.score.unwrap_or(0);
-    let mut defi_score = if defi.exists {
-        calculate_defi_score(defi)
-    } else {
-        0
+    // 3) Decode all verified journals
+    let tradfi_data: VerificationOutput = match from_slice(&tradfi_journal_bytes) {
+        Ok(data) => data,
+        Err(_) => {
+            commit_zero_score();
+            return;
+        }
+    };
+    let account_data: ProofOutput = match from_slice(&account_journal_bytes) {
+        Ok(data) => data,
+        Err(_) => {
+            commit_zero_score();
+            return;
+        }
+    };
+    let stateroot_data: StateRootOutput = match from_slice(&stateroot_journal_bytes) {
+        Ok(data) => data,
+        Err(_) => {
+            commit_zero_score();
+            return;
+        }
     };
 
-    // contract penalty
-    if let Some(code_hash) = defi.code_hash {
-        let empty = H256::from([
-            0xc5, 0xd2, 0x46, 0x01, 0x86, 0xf7, 0x23, 0x3c,
-            0x92, 0x7e, 0x7d, 0xb2, 0xdc, 0xc7, 0x03, 0xc0,
-            0xe5, 0x00, 0xb6, 0x53, 0xca, 0x82, 0x27, 0x3b,
-            0x7b, 0xfa, 0xd8, 0x04, 0x5d, 0x85, 0xa4, 0x70,
-        ]);
-        if code_hash != empty {
-            // slight penalty
-            defi_score = (defi_score as f64 * 0.95) as u64;
-        }
+    // 4) Validate all proofs and cross-verify state root
+    if !tradfi_data.is_valid {
+        let hybrid_score = HybridCreditScore {
+            score: 0,
+            server_name: tradfi_data.server_name.clone(),
+            state_root_provider: stateroot_data.server_name.clone(),
+            block_number: parse_block_number(&stateroot_data.block_number),
+            breakdown: create_zero_breakdown(),
+        };
+        commit_hybrid_score(&hybrid_score);
+        return;
     }
 
-    let weighted_tradfi = (tradfi_score as f64 * 0.6) as u64;
-    let weighted_defi = (defi_score as f64 * 0.4) as u64;
-    let total = weighted_tradfi + weighted_defi;
+    if !stateroot_data.is_valid {
+        let hybrid_score = HybridCreditScore {
+            score: 0,
+            server_name: tradfi_data.server_name.clone(),
+            state_root_provider: stateroot_data.server_name.clone(),
+            block_number: parse_block_number(&stateroot_data.block_number),
+            breakdown: create_zero_breakdown(),
+        };
+        commit_hybrid_score(&hybrid_score);
+        return;
+    }
+
+    if !validate_state_root_consistency(&account_data, &stateroot_data) {
+        let hybrid_score = HybridCreditScore {
+            score: 0,
+            server_name: tradfi_data.server_name.clone(),
+            state_root_provider: stateroot_data.server_name.clone(),
+            block_number: parse_block_number(&stateroot_data.block_number),
+            breakdown: create_zero_breakdown(),
+        };
+        commit_hybrid_score(&hybrid_score);
+        return;
+    }
+
+    // 5) Calculate hybrid credit score using the library
+    let hybrid_score = calculate_hybrid_score_with_lib(&tradfi_data, &account_data, &stateroot_data);
+
+    // 6) Commit the result
+    commit_hybrid_score(&hybrid_score);
+}
+
+fn parse_block_number(block_number_str: &Option<String>) -> u64 {
+    block_number_str
+        .as_ref()
+        .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
+        .unwrap_or(0)
+}
+//TODO
+fn validate_state_root_consistency(
+    account_data: &ProofOutput,
+    stateroot_data: &StateRootOutput,
+) -> bool {
+
+    true 
+}
+
+fn calculate_hybrid_score_with_lib(
+    tradfi_data: &VerificationOutput,
+    account_data: &ProofOutput,
+    stateroot_data: &StateRootOutput,
+) -> HybridCreditScore {
+   
+    let current_block = parse_block_number(&stateroot_data.block_number);
+    
+    // Estimate account age in blocks based on nonce 
+    let estimated_account_age_blocks = if let Some(nonce) = account_data.nonce {
+        let nonce_value = nonce.as_u64();
+        match nonce_value {
+            0 => 2000,       
+            1..=10 => 10000,  
+            11..=50 => 50000,
+            51..=100 => 200000, 
+            _ => 500000,     
+        }
+    } else {
+        0 
+    };
+    
+    let first_interaction_block = current_block.saturating_sub(estimated_account_age_blocks);
+    
+    let credit_input = CreditInput {
+        first_interaction_block,
+        current_block,
+        payment_history: PaymentHistory {
+            on_time_payments: 0, // n/a yet
+            liquidations: 0,
+        },
+        total_eth_balance: account_data.balance
+            .map(|b| b.as_u128())
+            .unwrap_or(0),
+        current_debt: 0,
+        tradify_credit_score: tradfi_data.score.map(|s| s as u16),
+        trust_level: TrustLevel::Platinum,
+    };
+
+    let breakdown = calculate_score(credit_input)
+        .expect("Robust library should never fail with valid inputs");
 
     HybridCreditScore {
-        score: total,
-        server_name: tradfi.server_name.clone(),
+        score: breakdown.final_score,
+        server_name: tradfi_data.server_name.clone(),
+        state_root_provider: stateroot_data.server_name.clone(),
+        block_number: current_block,
+        breakdown,
     }
 }
 
-fn calculate_defi_score(defi: &ProofOutput) -> u64 {
-    let mut score = 0u64;
-
-    // 1) Nonce activity
-    if let Some(n) = defi.nonce {
-        score += if n > U256::from(1000) {
-            200
-        } else if n > U256::from(100) {
-            150
-        } else if n > U256::from(10) {
-            100
-        } else if n > U256::from(1) {
-            50
-        } else {
-            10
-        };
+fn create_zero_breakdown() -> CreditScoreBreakdown {
+    CreditScoreBreakdown {
+        length_of_history_score: 300,
+        payment_history_score: 300,
+        credit_utilization_score: 300,
+        tradify_integration_score: 300,
+        trust_factor_score: 300,
+        final_score: 300,
     }
+}
 
-    // 2) ETH balance
-    if let Some(bal) = defi.balance {
-        let eth = bal / U256::exp10(18);
-        score += if eth >= U256::from(100) {
-            250
-        } else if eth >= U256::from(10) {
-            200
-        } else if eth >= U256::from(1) {
-            150
-        } else if bal >= U256::exp10(17) {
-            100
-        } else if bal >= U256::exp10(16) {
-            50
-        } else if bal > U256::zero() {
-            25
-        } else {
-            0
-        };
-    }
+fn commit_hybrid_score(hybrid: &HybridCreditScore) {
+    let mut data = [0u8; 128]; 
+    
+    let score_bytes = (hybrid.score as u64).to_le_bytes();
+    data[0..8].copy_from_slice(&score_bytes);
+    
+    let server_bytes = hybrid.server_name.as_bytes();
+    let server_copy_len = server_bytes.len().min(48);
+    data[8..8 + server_copy_len].copy_from_slice(&server_bytes[..server_copy_len]);
+    
+    let provider_bytes = hybrid.state_root_provider.as_bytes();
+    let provider_copy_len = provider_bytes.len().min(48);
+    data[56..56 + provider_copy_len].copy_from_slice(&provider_bytes[..provider_copy_len]);
+    
+    let block_number_bytes = hybrid.block_number.to_le_bytes();
+    data[104..112].copy_from_slice(&block_number_bytes);
+    
+    let data_vec = data.to_vec();
+    env::commit(&data_vec);
+}
 
-    // 3) Existence
-    score += 100;
-
-    // 4) Storage root
-    if defi.storage_root.is_some() {
-        score += 50;
-    }
-
-    // Cap at 850
-    if score > 850 {
-        score = 850;
-    }
-
-    score
+fn commit_zero_score() {
+    let data = vec![0u8; 128];
+    env::commit(&data);
 }

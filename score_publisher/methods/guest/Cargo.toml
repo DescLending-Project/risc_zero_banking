@@ -4,10 +4,12 @@ version = { workspace = true }
 edition = { workspace = true }
 
 [dependencies]
-risc0-zkvm = { version = "2.1.0", default-features = false, features = ["std"] }
+score_calculation = { path = "../../lib/core/score_calculation" }
+risc0-zkvm = { version = "2.3.1", default-features = false, features = ["std"] }
 serde = { workspace = true }
 risc0-zkp = { workspace = true }
 ethereum-types = { workspace = true }
+alloy-sol-types = "0.8"
 
 [profile.release]
 lto = "thin"

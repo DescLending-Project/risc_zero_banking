@@ -6,17 +6,13 @@ use alloy::{
 use alloy_primitives::Address;
 use anyhow::Result;
 use clap::Parser;
-use std::{env, fs::File, io::Read};
-use bincode;
+use std::{fs::File, io::Read};
 use serde::{Deserialize, Serialize};
 use methods::GUEST_ELF;
 use risc0_ethereum_contracts::encode_seal;
-use risc0_zkvm::{
-    default_prover, ExecutorEnv, Receipt,
-    ProverOpts, VerifierContext,
-};
-use ethereum_types::{H256, U256};
+use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, Receipt, ReceiptKind};
 use url::Url;
+use ethereum_types::{U256, H256};
 
 pub mod credit_score_abi {
     alloy::sol!(
@@ -25,8 +21,21 @@ pub mod credit_score_abi {
             function submitCreditScore(
                 uint64 score,
                 string calldata serverName,
-                bytes calldata seal
+                string calldata stateRootProvider,
+                bytes calldata seal,
+                bytes calldata journalData
             ) external;
+            
+            function testVerify(
+                bytes calldata seal,
+                bytes calldata journalData
+            ) external view returns (bool);
+            
+            function isServerAuthorized(string calldata serverName) external view returns (bool);
+            
+            function isStateRootProviderAuthorized(string calldata providerName) external view returns (bool);
+            
+            function imageId() external view returns (bytes32);
         }
     );
 }
@@ -48,10 +57,13 @@ struct Args {
     contract: Address,
 
     #[clap(long)]
-    first_receipt_path: String,
-
+    tradfi_receipt_path: String,
+    
     #[clap(long)]
-    second_receipt_path: String,
+    account_receipt_path: String,
+    
+    #[clap(long)]
+    stateroot_receipt_path: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -73,151 +85,160 @@ struct ProofOutput {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct HybridCreditScore {
-    score: u64,
+struct StateRootOutput {
+    is_valid: bool,
     server_name: String,
+    state_root: Option<String>,
+    block_number: Option<String>,
+    error: Option<String>,
 }
 
 fn main() -> Result<()> {
     env_logger::init();
-    
-    // Try CLI args first, fallback to env args for local testing
-    let args = if env::args().len() > 1 {
-        Args::parse()
-    } else {
-        // Fallback for local testing without CLI args
-        let mut env_args = env::args();
-        let exe = env_args.next().unwrap();
-        let first_receipt_path = env_args.next().unwrap_or_else(|| {
-            eprintln!("Usage: {} <first_receipt_path> <second_receipt_path> [--chain-id <id> --rpc-url <url> --contract <addr> --eth-wallet-private-key <key>]", exe);
-            std::process::exit(1);
-        });
-        let second_receipt_path = env_args.next().unwrap_or_else(|| {
-            eprintln!("Usage: {} <first_receipt_path> <second_receipt_path> [--chain-id <id> --rpc-url <url> --contract <addr> --eth-wallet-private-key <key>]", exe);
-            std::process::exit(1);
-        });
 
-        // Just run local proof generation if no blockchain args provided
-        return run_local_proof(&first_receipt_path, &second_receipt_path);
+    let args = Args::parse();
+
+    let (tradfi_receipt, tradfi_journal_bytes) = load_receipt(&args.tradfi_receipt_path)?;
+    let (account_receipt, account_journal_bytes) = load_receipt(&args.account_receipt_path)?;
+    let (stateroot_receipt, stateroot_journal_bytes) = load_receipt(&args.stateroot_receipt_path)?;
+
+    println!("🔍 Attempting to decode TradFi receipt journal...");
+    let tradfi_valid = match tradfi_receipt.journal.decode::<VerificationOutput>() {
+        Ok(output) => {
+            println!("✅ TradFi receipt decoded successfully");
+            println!("  - is_valid: {}", output.is_valid);
+            println!("  - server_name: '{}'", output.server_name);
+            println!("  - score: {:?}", output.score);
+            output.is_valid
+        }
+        Err(e) => return Err(anyhow::anyhow!("Failed to decode TradFi receipt journal: {}", e)),
     };
 
-    // Load and process receipts
-    let (first_receipt, second_receipt, first_journal_bytes, second_journal_bytes) = 
-        load_receipts(&args.first_receipt_path, &args.second_receipt_path)?;
+    println!("🔍 Attempting to decode Account receipt journal...");
+    let account_valid = match account_receipt.journal.decode::<ProofOutput>() {
+        Ok(output) => {
+            println!("✅ Account receipt decoded successfully");
+            println!("  - exists: {}", output.exists);
+            println!("  - balance: {:?}", output.balance);
+            println!("  - nonce: {:?}", output.nonce);
+            output.exists
+        }
+        Err(e) => return Err(anyhow::anyhow!("Failed to decode Account receipt journal: {}", e)),
+    };
 
-    // Check proof validity for display
-    let tradfi_valid = first_receipt.journal.decode::<VerificationOutput>()
-        .map(|output| output.is_valid)
-        .unwrap_or(false);
-
-    let account_valid = second_receipt.journal.decode::<ProofOutput>()
-        .map(|output| output.exists)
-        .unwrap_or(false);
-
-    println!("TRADFI_TLSN_PROOF {}", if tradfi_valid { "valid" } else { "invalid" });
-    println!("ETH_ACCOUNT_PROOF {}", if account_valid { "valid" } else { "invalid" });
-
-    // Build the zkVM execution environment
-    let env = ExecutorEnv::builder()
-        .add_assumption(first_receipt)
-        .add_assumption(second_receipt)
-        .write(&first_journal_bytes)?
-        .write(&second_journal_bytes)?
-        .build()?;
-
-    // Generate Groth16 proof for on-chain verification
-    let receipt = default_prover()
-        .prove_with_ctx(
-            env, 
-            &VerifierContext::default(), 
-            GUEST_ELF, 
-            &ProverOpts::groth16()
-        )?
-        .receipt;
-
-    // Decode the result
-    let result: HybridCreditScore = receipt.journal.decode()?;
-    
-    println!("credit score={}", result.score);
-    println!("fetched from server={}", result.server_name);
-
-    // Encode the seal for on-chain verification
-    let seal = encode_seal(&receipt)?;
-
-    // Submit to blockchain
-    let wallet = EthereumWallet::from(args.eth_wallet_private_key);
-    let provider = ProviderBuilder::new().wallet(wallet).connect_http(args.rpc_url);
-
-    let contract = ICreditScore::new(args.contract, provider);
-    
-    let call = contract.submitCreditScore(
-        result.score,
-        result.server_name,
-        seal.into()
-    );
-    
-    let runtime = tokio::runtime::Runtime::new()?;
-    let pending_tx = runtime.block_on(call.send())?;
-    let tx_receipt = runtime.block_on(pending_tx.get_receipt())?;
-    
-    println!("Credit score submitted on-chain: {:?}", tx_receipt.transaction_hash);
-
-    Ok(())
-}
-
-fn run_local_proof(first_receipt_path: &str, second_receipt_path: &str) -> Result<()> {
-    let (first_receipt, second_receipt, first_journal_bytes, second_journal_bytes) = 
-        load_receipts(first_receipt_path, second_receipt_path)?;
-
-    // Check proof validity
-    let tradfi_valid = first_receipt.journal.decode::<VerificationOutput>()
-        .map(|output| output.is_valid)
-        .unwrap_or(false);
-
-    let account_valid = second_receipt.journal.decode::<ProofOutput>()
-        .map(|output| output.exists)
-        .unwrap_or(false);
+    println!("🔍 Attempting to decode StateRoot receipt journal...");
+    let stateroot_valid = match stateroot_receipt.journal.decode::<StateRootOutput>() {
+        Ok(output) => {
+            println!("✅ StateRoot receipt decoded successfully");
+            println!("  - is_valid: {}", output.is_valid);
+            println!("  - server_name: '{}'", output.server_name);
+            println!("  - state_root: {:?}", output.state_root);
+            println!("  - block_number: {:?}", output.block_number);
+            output.is_valid
+        }
+        Err(e) => return Err(anyhow::anyhow!("Failed to decode StateRoot receipt journal: {}", e)),
+    };
 
     println!("TRADFI_PROOF {}", if tradfi_valid { "valid" } else { "invalid" });
     println!("ACCOUNT_PROOF {}", if account_valid { "valid" } else { "invalid" });
+    println!("STATEROOT_PROOF {}", if stateroot_valid { "valid" } else { "invalid" });
 
-    // Build execution environment
+    println!("🔍 Building ExecutorEnv with all three assumptions...");
     let env = ExecutorEnv::builder()
-        .add_assumption(first_receipt)
-        .add_assumption(second_receipt)
-        .write(&first_journal_bytes)?
-        .write(&second_journal_bytes)?
+        .add_assumption(tradfi_receipt)
+        .add_assumption(account_receipt)
+        .add_assumption(stateroot_receipt)
+        .write(&tradfi_journal_bytes)?
+        .write(&account_journal_bytes)?
+        .write(&stateroot_journal_bytes)?
         .build()?;
 
-    // Generate local proof (fast proving for testing)
-    let opts = risc0_zkvm::ProverOpts::default().with_receipt_kind(risc0_zkvm::ReceiptKind::Succinct);
-    let prove_info = default_prover()
-        .prove_with_opts(env, GUEST_ELF, &opts)?;
-
-    let result: HybridCreditScore = prove_info.receipt.journal.decode()?;
+    println!("🔍 Starting proof generation...");
+    let opts = ProverOpts::default().with_receipt_kind(ReceiptKind::Groth16);
     
-    println!("credit score={}", result.score);
-    println!("fetched from server={}", result.server_name);
+    let prove_info = match default_prover().prove_with_opts(env, GUEST_ELF, &opts) {
+        Ok(info) => {
+            println!("✅ Proof generation successful");
+            info
+        }
+        Err(e) => return Err(anyhow::anyhow!("Proof generation failed: {}", e)),
+    };
+
+    let receipt = prove_info.receipt;
+    
+    println!("🔍 Analyzing receipt type...");
+    match &receipt.inner {
+        risc0_zkvm::InnerReceipt::Groth16(_) => {
+            println!("✅ Groth16 receipt generated successfully");
+        }
+        _ => {
+            println!("❌ Expected Groth16 receipt but got different type");
+        }
+    }
+
+    println!("🔍 Attempting to decode final receipt journal...");
+    let committed_data_vec: Vec<u8> = receipt.journal.decode()?;
+
+    if committed_data_vec.len() != 128 {
+        return Err(anyhow::anyhow!("Expected 128 bytes in journal, got {}", committed_data_vec.len()));
+    }
+    let mut committed_data = [0u8; 128];
+    committed_data.copy_from_slice(&committed_data_vec);
+
+    let score = u64::from_le_bytes(committed_data[0..8].try_into()?);
+    let server_name_bytes = &committed_data[8..56];
+    let server_end_pos = server_name_bytes.iter().position(|&b| b == 0).unwrap_or(server_name_bytes.len());
+    let server_name = String::from_utf8_lossy(&server_name_bytes[..server_end_pos]).to_string();
+
+    let provider_name_bytes = &committed_data[56..104];
+    let provider_end_pos = provider_name_bytes.iter().position(|&b| b == 0).unwrap_or(provider_name_bytes.len());
+    let state_root_provider = String::from_utf8_lossy(&provider_name_bytes[..provider_end_pos]).to_string();
+
+    let block_number = u64::from_le_bytes(committed_data[104..112].try_into()?);
+
+    println!("✅ Final Hybrid Score: {}", score);
+    println!("✅ TradFi Server: '{}'", server_name);
+    println!("✅ State Root Provider: '{}'", state_root_provider);
+    println!("✅ Block Number: {}", block_number);
+
+    let final_server_name = if server_name.is_empty() { "unknown".to_string() } else { server_name };
+    let final_state_root_provider = if state_root_provider.is_empty() { "unknown".to_string() } else { state_root_provider };
+
+    let journal_bytes = &receipt.journal.bytes;
+    let seal = encode_seal(&receipt)?;
+
+    let wallet = EthereumWallet::from(args.eth_wallet_private_key);
+    let provider = ProviderBuilder::new().wallet(wallet).connect_http(args.rpc_url);
+    let contract = ICreditScore::new(args.contract, provider);
+
+    let runtime = tokio::runtime::Runtime::new()?;
+
+    println!("✅ About to call submitCreditScore...");
+    let call = contract.submitCreditScore(
+        score,
+        final_server_name.clone(),
+        final_state_root_provider.clone(),
+        seal.into(),
+        journal_bytes.clone().into(),
+    );
+
+    let pending_tx = runtime.block_on(call.send())?;
+    let tx_receipt = runtime.block_on(pending_tx.get_receipt())?;
+
+    println!("✅ On-chain TX hash: {:?}", tx_receipt.transaction_hash);
 
     Ok(())
 }
 
-fn load_receipts(first_path: &str, second_path: &str) -> Result<(Receipt, Receipt, Vec<u8>, Vec<u8>)> {
-    // Load first receipt
-    let mut file = File::open(first_path)?;
-    let mut first_receipt_bytes = Vec::new();
-    file.read_to_end(&mut first_receipt_bytes)?;
-    let first_receipt: Receipt = bincode::deserialize(&first_receipt_bytes)?;
+fn load_receipt(receipt_path: &str) -> Result<(Receipt, Vec<u8>)> {
+    println!("🔍 Loading receipt from: {}", receipt_path);
+    let mut file = File::open(receipt_path)?;
+    let mut receipt_bytes = Vec::new();
+    file.read_to_end(&mut receipt_bytes)?;
+    
+    let receipt: Receipt = bincode::deserialize(&receipt_bytes)
+        .map_err(|e| anyhow::anyhow!("Failed to deserialize receipt: {}", e))?;
 
-    // Load second receipt  
-    let mut file = File::open(second_path)?;
-    let mut second_receipt_bytes = Vec::new();
-    file.read_to_end(&mut second_receipt_bytes)?;
-    let second_receipt: Receipt = bincode::deserialize(&second_receipt_bytes)?;
-
-    // Extract journal bytes
-    let first_journal_bytes = first_receipt.journal.bytes.clone();
-    let second_journal_bytes = second_receipt.journal.bytes.clone();
-
-    Ok((first_receipt, second_receipt, first_journal_bytes, second_journal_bytes))
+    let journal_bytes = receipt.journal.bytes.clone();
+    Ok((receipt, journal_bytes))
 }

@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "core/stark_to_snark",
+    "core/eth_utils",
+     "core/merkle_verifier_core",
+     "core/fetch_merkle",
+     "core/score_calculation",
+     # "proofs/example_merkle_verify", 
+     "proofs/merkle_verify", 
+    # "tlsn-risc0",
+    # "tlsn-risc0/methods",
+    # "tlsn-test-suite",
+]
