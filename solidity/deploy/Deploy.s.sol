@@ -8,7 +8,8 @@ import {RiscZeroCheats} from "risc0/test/RiscZeroCheats.sol";
 import {IRiscZeroVerifier} from "risc0/IRiscZeroVerifier.sol";
 import {RiscZeroGroth16Verifier} from "risc0/groth16/RiscZeroGroth16Verifier.sol";
 import {ControlID} from "risc0/groth16/ControlID.sol";
-import {CreditScore} from "../contracts/CreditScore.sol";
+import {CreditScore} from "../contracts/Creditscore.sol";
+import {Lending} from "../contracts/Lending.sol";
 
 contract CreditScoreDeploy is Script, RiscZeroCheats {
     string constant CONFIG_FILE = "deploy/config.toml";
@@ -65,6 +66,11 @@ contract CreditScoreDeploy is Script, RiscZeroCheats {
         } else {
             console2.log("Using IRiscZeroVerifier contract deployed at", address(verifier));
         }
+
+        // Deploy mock lending contract 
+        address userAddress = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
+        Lending lending = new Lending(userAddress, 1,2,3,10000000);
+        console2.log("Lending contract deployed at", address(lending));
 
         // Deploy the CreditScore contract.
         CreditScore creditScore = new CreditScore(verifier);
