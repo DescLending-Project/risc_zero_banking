@@ -6,7 +6,7 @@ use loaders::loaders::{
     load_all_merkle_proofs, load_nullifiers, load_signatures, load_user_owned_addresses,
 };
 use methods::{DEFI_INPUTS_VALIDATOR_ELF, DEFI_INPUTS_VALIDATOR_ID};
-use risc0_zkvm::{default_prover, ExecutorEnv};
+use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts};
 use shared::{DefiProofInput, DefiProofOutput};
 
 fn main() {
@@ -49,7 +49,12 @@ fn main() {
 
     // Proof information by proving the specified ELF binary.
     // This struct contains the receipt along with statistics about execution of the guest
-    let prove_info = prover.prove(env, DEFI_INPUTS_VALIDATOR_ELF).unwrap();
+    // let prove_info = prover.prove(env, DEFI_INPUTS_VALIDATOR_ELF).unwrap();
+    println!("Running the prover...");
+    let opts = ProverOpts::succinct();
+    let prove_info = prover
+        .prove_with_opts(env, DEFI_INPUTS_VALIDATOR_ELF, &opts)
+        .unwrap();
 
     // extract the receipt.
     let receipt = prove_info.receipt;
