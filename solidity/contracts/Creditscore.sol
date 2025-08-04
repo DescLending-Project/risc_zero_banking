@@ -13,6 +13,11 @@ contract CreditScore {
     mapping(string => bool) public authorizedServers;
     mapping(string => bool) public authorizedStateRootProviders;
     mapping(address => CreditScoreData) public creditScores;
+    mapping(bytes32 => bool) public usedAccountsNullifiers; // 
+    mapping(bytes32 => mapping(uint256 => bytes32[])) public ownedAccountNullifiers; // maps from lender  ETH Account nullifier to mapping of  each of his submited CreditSocres( that are identified by the block height of submision ) to used nullifiers in that credit score calcultaion
+    mapping(bytes32 => bytes32) public tradifyNullifiers; // mapping from tradify score  Nullifier to its owner ETH accounts nullifier
+    mapping(bytes32 => uint64) public storedCreditScoresNumber; // mapping from tradifyNullifier to the number  of creditScores that are curently stored on the contract for him
+
 
     struct CreditScoreData {
         uint64 score;
@@ -42,6 +47,71 @@ contract CreditScore {
         authorizedStateRootProviders["sonic-blaze.g.alchemy.com"] = true;
         authorizedStateRootProviders["infura.com"] = true;
     }
+
+    // NOTE: first nullifier in the userOwnedAccountsNullifiers must be the nullifier of the eth account (lender account) for witch user trys to get a loan.(this is checked during defi_inputs_validation)
+    function addNullifiers(bytes32[] calldata userOwnedAccountsNullifiers , bytes32 userTradifyNullifier) external{
+
+      require(tradifyNullifiers[userTradifyNullifier] == bytes32(0) || tradifyNullifiers[userTradifyNullifier] == userOwnedAccountsNullifiers[0], "User trys to use not his tradify score.");
+      // storing the userTradifyNullifer
+      tradifyNullifiers[userTradifyNullifier] = userOwnedAccountsNullifiers[0];
+
+
+
+
+      // verifing that the users ethAccount was not used for calcultaion of creditScore for some other ethAccount
+      // NOTE: we allow user to reuse his lender account, as we are tracking the ammount of funds that he owees us and this ammount is includeded in the score calculation
+      if(usedAccountsNullifiers[userOwnedAccountsNullifiers[0]]){
+        // check if the nullifier was used by the lender account or as one of the ownedAccounts
+        require(storedCreditScoresNumber[userOwnedAccountsNullifiers[0]] > 0 , "Provided User lender account is already in use by some other lender account.");
+        
+      }
+
+      // storing the lender accounts nullifier
+      usedAccountsNullifiers[userOwnedAccountsNullifiers[0]] = true;
+      ownedAccountNullifiers[userOwnedAccountsNullifiers[0]][block.number].push(userOwnedAccountsNullifiers[0]);
+      storedCreditScoresNumber[userOwnedAccountsNullifiers[0]]++;
+
+
+
+      // iteratitng over provided nullfiers checking if they were not already in use and storing them
+      for (uint i = 1 ; i < userOwnedAccountsNullifiers.length ; i++){
+       require(usedAccountsNullifiers[userOwnedAccountsNullifiers[i]] == false, 'User trys to use ethAccount for his maxcredit score calculation, that is already in use.');
+        // storing the nullifier
+        usedAccountsNullifiers[userOwnedAccountsNullifiers[i]]= true;
+
+        // storing the accountsNullifier in array of the lender account nullifier  in relation to the blockheight at witch the the creditScore was submited
+        ownedAccountNullifiers[userOwnedAccountsNullifiers[0]][block.number].push(userOwnedAccountsNullifiers[i]);
+      }
+    }
+
+    // NOTE: should be called when the CreditScore gets deleted from the contract
+    // it deletes all nullifiers related to the creditScore that was submited at the credtiScoreSubmissionBlock height
+    function deleteNullifiers(uint256 creditScoreSubmisionBlockHeight, bytes32 lenderNullifier ) external {
+
+      require(ownedAccountNullifiers[lenderNullifier][creditScoreSubmisionBlockHeight].length> 0, "CreditScore related nullifiers not found.");
+
+      // Deleting all usedAccountsNullifiers for this CreditScore calcultation
+      for (uint256 index = 1; index < ownedAccountNullifiers[lenderNullifier][creditScoreSubmisionBlockHeight].length; index++) {
+        delete usedAccountsNullifiers[ownedAccountNullifiers[lenderNullifier][creditScoreSubmisionBlockHeight][index]];     
+      }
+
+
+      // deleting the array of associated nullifiers 
+      delete ownedAccountNullifiers[lenderNullifier][creditScoreSubmisionBlockHeight];
+
+      require(storedCreditScoresNumber[lenderNullifier]> 0 , "User did not have any Credit Score");
+      storedCreditScoresNumber[lenderNullifier]--;
+
+
+      // in case where this was the last used user credit score, user can utilize this lending account as ownedAccount in score calculation for different lending account
+      if(storedCreditScoresNumber[lenderNullifier]== 0){
+        delete usedAccountsNullifiers[lenderNullifier];
+        delete storedCreditScoresNumber[lenderNullifier];
+      }
+
+
+    }
+
 
     function submitCreditScore(
         uint64 score,

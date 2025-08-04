@@ -21,6 +21,12 @@ export CHAIN_ID=31337
 export RPC_URL=http://localhost:8545
 export ETH_WALLET_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
+
+or source the variables from .local_env file
+```shell
+source .local_env
+```
+
 Build Contracts
 ```shell
 forge build
@@ -30,3 +36,10 @@ Deploy Contracts
 forge script deploy/Deploy.s.sol:CreditScoreDeploy --rpc-url $RPC_URL --broadcast --private-key $ETH_WALLET_PRIVATE_KEY
 ```
 Now you can go to score_publisher/
+
+
+
+To test the nullifiers handling logic run the tests from NullifierTest.sol
+```shell
+forge test --match-contract NullifierTest -vv
+```
