@@ -18,8 +18,16 @@ contract CreditScore {
         uint64 score;
         string serverName;
         string stateRootProvider;
+        uint64 blockNumber;
         uint256 timestamp;
         bool isValid;
+    }
+
+    struct JournalData {
+        uint64 score;
+        string serverName;
+        string stateRootProvider;
+        uint64 blockNumber;
     }
 
     event CreditScoreSubmitted(
@@ -27,6 +35,7 @@ contract CreditScore {
         uint64 score,
         string serverName,
         string stateRootProvider,
+        uint64 blockNumber,
         uint256 timestamp
     );
     event ServerAuthorized(string serverName, bool authorized);
@@ -36,7 +45,7 @@ contract CreditScore {
         verifier = _verifier;
 
         authorizedServers["httpbin.org"] = true;
-        authorizedServers["openbanking-api-826260723607.europe-west3.run.ap"] = true; // last "p" is missing as domain is to long even with 128 byte journal
+        authorizedServers["openbanking-api-826260723607.europe-west3.run.app"] = true; 
         authorizedServers["schufa.de"] = true;
         
         authorizedStateRootProviders["sonic-blaze.g.alchemy.com"] = true;
@@ -47,28 +56,42 @@ contract CreditScore {
         uint64 score,
         string calldata serverName,
         string calldata stateRootProvider,
-        bytes calldata seal,
-        bytes calldata journalData
+        uint64 blockNumber,
+        bytes calldata seal
     ) external {
         require(authorizedServers[serverName], "TradFi server not authorized");
         require(authorizedStateRootProviders[stateRootProvider], "State root provider not authorized");
 
-        bytes32 journalHash = sha256(journalData);
+        // Create the exact same struct that the guest encodes
+        JournalData memory journalStruct = JournalData({
+            score: score,
+            serverName: serverName,
+            stateRootProvider: stateRootProvider,
+            blockNumber: blockNumber
+        });
+        
+        bytes memory expectedJournal = abi.encode(journalStruct);
+        bytes32 journalHash = sha256(expectedJournal);
+        
         verifier.verify(seal, imageId, journalHash);
 
         creditScores[msg.sender] = CreditScoreData({
             score: score,
             serverName: serverName,
             stateRootProvider: stateRootProvider,
+            blockNumber: blockNumber,
             timestamp: block.timestamp,
             isValid: true
         });
 
-        emit CreditScoreSubmitted(msg.sender, score, serverName, stateRootProvider, block.timestamp);
+        emit CreditScoreSubmitted(msg.sender, score, serverName, stateRootProvider, blockNumber, block.timestamp);
     }
 
     function getCreditScore(address user) external view returns (
         uint64 score,
+        string memory serverName,
+        string memory stateRootProvider,
+        uint64 blockNumber,
         bool isValid,
         uint256 timestamp
     ) {
@@ -80,9 +103,16 @@ contract CreditScore {
                          (block.timestamp - userData.timestamp) <= SCORE_EXPIRY_PERIOD;
         
         if (notExpired) {
-            return (userData.score, true, userData.timestamp);
+            return (
+                userData.score, 
+                userData.serverName,
+                userData.stateRootProvider,
+                userData.blockNumber,
+                true, 
+                userData.timestamp
+            );
         } else {
-            return (0, false, userData.timestamp);
+            return (0, "", "", 0, false, userData.timestamp);
         }
     }
 
