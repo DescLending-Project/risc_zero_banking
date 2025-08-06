@@ -35,23 +35,23 @@ impl TrustLevel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentHistory {
     /// Total number of loans paid on time
-    pub on_time_payments: u32,
+    pub on_time_payments: u64,
     /// Total number of loans that were liquidated
-    pub liquidations: u32,
+    pub liquidations: u64,
 }
 
-/// User's credit input data
+/// User's credit input data - Updated to use DeFi proof data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreditInput {
-    /// Block number of first platform interaction
-    pub first_interaction_block: u64,
-    /// Current block number
+    /// Timestamp of first platform interaction (converted from DeFi proof)
+    pub first_interaction_timestamp: u64,
+    /// Current block number (from state root proof)
     pub current_block: u64,
-    /// Payment history summary
+    /// Payment history summary (from DeFi proof)
     pub payment_history: PaymentHistory,
-    /// Total ETH balance across user's accounts (in wei)
+    /// Total ETH balance across user's accounts (from DeFi proof, in wei)
     pub total_eth_balance: u128,
-    /// Current debt in the system (in wei)
+    /// Current debt in the system (from DeFi proof, in wei)
     pub current_debt: u128,
     /// Off-chain credit score (300-850 range, None if not provided)
     pub tradify_credit_score: Option<u16>,
@@ -70,28 +70,25 @@ pub struct CreditScoreBreakdown {
     pub final_score: u16,
 }
 
-/// Calculate comprehensive credit score - ROBUST VERSION
+/// Calculate comprehensive credit score
 pub fn calculate_credit_score(input: &CreditInput) -> Result<CreditScoreBreakdown, String> {
-    // Simplified validation - only check truly invalid cases
-    if input.current_block < input.first_interaction_block {
-        return Err("Invalid block sequence".to_string());
+ 
+    if input.first_interaction_timestamp == 0 {
+        return Err("Invalid first interaction timestamp".to_string());
     }
 
     if let Some(score) = input.tradify_credit_score {
         if score > 850 {
-            // Allow scores below 300 - just clamp them later
             return Err("TradFi score too high".to_string());
         }
     }
 
-    // Calculate all components with safe math
     let length_score = calculate_length_score_safe(input);
     let payment_score = calculate_payment_score_safe(input);
     let utilization_score = calculate_utilization_score_safe(input);
     let tradify_score = calculate_tradify_score_safe(input);
     let trust_score = calculate_trust_score_safe(input);
 
-    // Calculate final score with safe weighted average
     let final_score = calculate_final_score_safe(
         length_score,
         payment_score,
@@ -115,27 +112,27 @@ fn clamp_score(score: u16) -> u16 {
     score.min(850).max(300)
 }
 
-/// Calculate length of history score - SAFE VERSION
 fn calculate_length_score_safe(input: &CreditInput) -> u16 {
-    let account_age_blocks = input.current_block.saturating_sub(input.first_interaction_block);
+    // Convert block number to approximate timestamp (13 seconds per block)
+    let current_timestamp = input.current_block * 13;
+    
+    let account_age_seconds = current_timestamp.saturating_sub(input.first_interaction_timestamp);
     
     // Map age to score using simple linear interpolation
-    // 0 blocks = 300, 2+ years (5.2M blocks) = 850
-    const MAX_AGE_BLOCKS: u64 = 5_256_000; // ~2 years
+    // 0 seconds = 300, 2+ years = 850
+    const MAX_AGE_SECONDS: u64 = 63_072_000; // ~2 years in seconds
     
-    if account_age_blocks == 0 {
+    if account_age_seconds == 0 {
         300
-    } else if account_age_blocks >= MAX_AGE_BLOCKS {
+    } else if account_age_seconds >= MAX_AGE_SECONDS {
         850
     } else {
-        // Safe linear interpolation
-        let progress = (account_age_blocks as f64) / (MAX_AGE_BLOCKS as f64);
+        let progress = (account_age_seconds as f64) / (MAX_AGE_SECONDS as f64);
         let score = 300.0 + (550.0 * progress); // 300 + (850-300) * progress
         clamp_score(score as u16)
     }
 }
 
-/// Calculate payment history score - SAFE VERSION
 fn calculate_payment_score_safe(input: &CreditInput) -> u16 {
     let on_time = input.payment_history.on_time_payments;
     let liquidations = input.payment_history.liquidations;
@@ -146,11 +143,7 @@ fn calculate_payment_score_safe(input: &CreditInput) -> u16 {
     }
 
     // Calculate success rate safely
-    let success_rate = if total == 0 {
-        0.0
-    } else {
-        (on_time as f64) / (total as f64)
-    };
+    let success_rate = (on_time as f64) / (total as f64);
 
     // Map success rate to score
     let base_score: u16 = if success_rate >= 0.95 {
@@ -173,7 +166,7 @@ fn calculate_payment_score_safe(input: &CreditInput) -> u16 {
 
     // Apply liquidation penalty (max 150 points)
     let penalty: u16 = if liquidations > 0 {
-        (liquidations.saturating_mul(25)).min(150) as u16
+        (liquidations.saturating_mul(25).min(150)) as u16
     } else {
         0u16
     };
@@ -181,7 +174,6 @@ fn calculate_payment_score_safe(input: &CreditInput) -> u16 {
     clamp_score(base_score.saturating_sub(penalty))
 }
 
-/// Calculate credit utilization score - SAFE VERSION
 fn calculate_utilization_score_safe(input: &CreditInput) -> u16 {
     // Handle zero debt case immediately
     if input.current_debt == 0 {
@@ -227,7 +219,6 @@ fn calculate_utilization_score_safe(input: &CreditInput) -> u16 {
     }
 }
 
-/// Calculate TradFi integration score - SAFE VERSION
 fn calculate_tradify_score_safe(input: &CreditInput) -> u16 {
     match input.tradify_credit_score {
         Some(score) => {
@@ -240,12 +231,10 @@ fn calculate_tradify_score_safe(input: &CreditInput) -> u16 {
     }
 }
 
-/// Calculate trust factor score - SAFE VERSION
 fn calculate_trust_score_safe(input: &CreditInput) -> u16 {
     let base_score = 650;
     let multiplier = input.trust_level.to_multiplier();
     
-    // Safe floating point to integer conversion
     let adjusted = (base_score as f64 * multiplier).round() as u16;
     
     // Add trust level bonus
@@ -259,7 +248,6 @@ fn calculate_trust_score_safe(input: &CreditInput) -> u16 {
     clamp_score(adjusted.saturating_add(bonus))
 }
 
-/// Calculate final weighted score - SAFE VERSION
 fn calculate_final_score_safe(
     length_score: u16,
     payment_score: u16,
@@ -281,18 +269,16 @@ fn calculate_final_score_safe(
     clamp_score(final_score)
 }
 
-/// Calculate credit limit safely
 fn calculate_credit_limit_safe(eth_balance_wei: u128, trust_level: TrustLevel) -> u128 {
     let trust_limit = trust_level.max_credit_limit_wei();
     eth_balance_wei.min(trust_limit)
 }
 
-/// Calculate credit limit for external use
 pub fn calculate_credit_limit(eth_balance_wei: u128, trust_level: TrustLevel) -> u128 {
     calculate_credit_limit_safe(eth_balance_wei, trust_level)
 }
 
-/// Main entry point for RISC Zero execution - ROBUST VERSION
+/// Main entry point for RISC Zero execution 
 pub fn calculate_score(input: CreditInput) -> Result<CreditScoreBreakdown, String> {
     calculate_credit_score(&input)
 }

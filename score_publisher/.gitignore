@@ -2,3 +2,840 @@
 Cargo.lock
 methods/guest/Cargo.lock
 target/
+
+im habving issues with verifying my r0 contract onchain as the journal doesnt match when I encode and decode
+
+here is some debug I did:    Running target/debug/abitest
+🔍 Testing ABI Encoding Compatibility
+
+📝 Test Case 1: 
+  Score: 664
+  Server: 'openbanking-api-826260723607.europe-west3.run.app'
+  Provider: 'sonic-blaze.g.alchemy.com'
+  Block: 26803
+  Encoded length: 320 bytes
+  Encoded hex: 00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000298000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000068b300000000000000000000000000000000000000000000000000000000000000316f70656e62616e6b696e672d6170692d3832363236303732333630372e6575726f70652d77657374332e72756e2e6170700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000019736f6e69632d626c617a652e672e616c6368656d792e636f6d00000000000000
+  ✅ Round-trip successful: true
+  SHA256 hash: 0x0fa03231d98b8e07d401ca6dc41dbcabf5f3439500b327f6d6e159c92dee9b24
+
+📝 Test Case 2: 
+  Score: 0
+  Server: ''
+  Provider: ''
+  Block: 0
+  Encoded length: 224 bytes
+  Encoded hex: 00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  ✅ Round-trip successful: true
+  SHA256 hash: 0x043606f82f2317918a298626d37bcd76d5d3299e2a18517aa19ad403efe59e7f
+
+📝 Test Case 3: 
+  Score: 850
+  Server: 'httpbin.org'
+  Provider: 'infura.com'
+  Block: 12345
+  Encoded length: 288 bytes
+  Encoded hex: 00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000352000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000003039000000000000000000000000000000000000000000000000000000000000000b6874747062696e2e6f7267000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a696e667572612e636f6d00000000000000000000000000000000000000000000
+  ✅ Round-trip successful: true
+  SHA256 hash: 0xbf85bb8a7816e0f0e89d95fce2c3fe75e6b2e75ad61a78536b86e85e2c2d03d1
+
+🔍 Testing edge cases:
+  Long strings encoded: 480 bytes
+  First 64 bytes: 000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000003e7
+  ✅ Long strings round-trip successful
+
+✅ ABI encoding test complete!
+If all tests passed, the issue is likely in the guest commitment or contract verification.
+
+and I changed now  a bit to try without abi: use alloy::{
+    network::EthereumWallet,
+    providers::ProviderBuilder,
+    signers::local::PrivateKeySigner,
+    sol_types::SolValue,
+};
+use alloy_primitives::Address;
+use anyhow::{Context, Result};
+use clap::Parser;
+use std::{fs::File, io::Read};
+use serde::{Deserialize, Serialize};
+use methods::GUEST_ELF;
+use risc0_ethereum_contracts::encode_seal;
+use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, Receipt, ReceiptKind};
+use url::Url;
+use ethereum_types::{U256, H256};
+
+pub mod credit_score_abi {
+    alloy::sol!(
+        #[sol(rpc, all_derives)]
+        interface ICreditScore {
+            // Option 1: Validated parameters
+            function submitCreditScore(
+                uint64 score,
+                string calldata serverName,
+                string calldata stateRootProvider,
+                uint64 blockNumber,
+                bytes calldata seal,
+                bytes calldata journal
+            ) external;
+            
+            // Option 2: Extract from journal only (most secure)
+            function submitCreditScoreFromJournal(
+                bytes calldata seal,
+                bytes calldata journal
+            ) external;
+            
+            function debugDecodeJournal(bytes calldata journal) external pure returns (
+                uint64 score,
+                string memory serverName,
+                string memory stateRootProvider,
+                uint64 blockNumber
+            );
+        }
+    );
+}
+
+use credit_score_abi::ICreditScore;
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[clap(long)]
+    chain_id: u64,
+
+    #[clap(long, env)]
+    eth_wallet_private_key: PrivateKeySigner,
+
+    #[clap(long)]
+    rpc_url: Url,
+
+    #[clap(long)]
+    contract: Address,
+
+    #[clap(long)]
+    tradfi_receipt_path: String,
+    
+    #[clap(long)]
+    account_receipt_path: String,
+    
+    #[clap(long)]
+    stateroot_receipt_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct VerificationOutput {
+    is_valid: bool,
+    server_name: String,
+    score: Option<u64>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ProofOutput {
+    exists: bool,
+    nonce: Option<U256>,
+    balance: Option<U256>,
+    storage_root: Option<H256>,
+    code_hash: Option<H256>,
+    storage_value: Option<U256>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct StateRootOutput {
+    is_valid: bool,
+    server_name: String,
+    state_root: Option<String>,
+    block_number: Option<String>,
+    error: Option<String>,
+}
+
+fn main() -> Result<()> {
+    env_logger::init();
+
+    let args = Args::parse();
+
+    let (tradfi_receipt, tradfi_journal_bytes) = load_receipt(&args.tradfi_receipt_path)?;
+    let (account_receipt, account_journal_bytes) = load_receipt(&args.account_receipt_path)?;
+    let (stateroot_receipt, stateroot_journal_bytes) = load_receipt(&args.stateroot_receipt_path)?;
+
+    println!("🔍 Attempting to decode TradFi receipt journal...");
+    let tradfi_valid = match tradfi_receipt.journal.decode::<VerificationOutput>() {
+        Ok(output) => {
+            println!("✅ TradFi receipt decoded successfully");
+            println!("  - is_valid: {}", output.is_valid);
+            println!("  - server_name: '{}'", output.server_name);
+            println!("  - score: {:?}", output.score);
+            output.is_valid
+        }
+        Err(e) => return Err(anyhow::anyhow!("Failed to decode TradFi receipt journal: {}", e)),
+    };
+
+    println!("🔍 Attempting to decode Account receipt journal...");
+    let account_valid = match account_receipt.journal.decode::<ProofOutput>() {
+        Ok(output) => {
+            println!("✅ Account receipt decoded successfully");
+            println!("  - exists: {}", output.exists);
+            println!("  - balance: {:?}", output.balance);
+            println!("  - nonce: {:?}", output.nonce);
+            output.exists
+        }
+        Err(e) => return Err(anyhow::anyhow!("Failed to decode Account receipt journal: {}", e)),
+    };
+
+    println!("🔍 Attempting to decode StateRoot receipt journal...");
+    let stateroot_valid = match stateroot_receipt.journal.decode::<StateRootOutput>() {
+        Ok(output) => {
+            println!("✅ StateRoot receipt decoded successfully");
+            println!("  - is_valid: {}", output.is_valid);
+            println!("  - server_name: '{}'", output.server_name);
+            println!("  - state_root: {:?}", output.state_root);
+            println!("  - block_number: {:?}", output.block_number);
+            output.is_valid
+        }
+        Err(e) => return Err(anyhow::anyhow!("Failed to decode StateRoot receipt journal: {}", e)),
+    };
+
+    println!("TRADFI_PROOF {}", if tradfi_valid { "valid" } else { "invalid" });
+    println!("ACCOUNT_PROOF {}", if account_valid { "valid" } else { "invalid" });
+    println!("STATEROOT_PROOF {}", if stateroot_valid { "valid" } else { "invalid" });
+
+    println!("🔍 Building ExecutorEnv with all three assumptions...");
+    let env = ExecutorEnv::builder()
+        .add_assumption(tradfi_receipt)
+        .add_assumption(account_receipt)
+        .add_assumption(stateroot_receipt)
+        .write(&tradfi_journal_bytes)?
+        .write(&account_journal_bytes)?
+        .write(&stateroot_journal_bytes)?
+        .build()?;
+
+    println!("🔍 Starting proof generation...");
+    let opts = ProverOpts::default().with_receipt_kind(ReceiptKind::Groth16);
+    
+    let prove_info = match default_prover().prove_with_opts(env, GUEST_ELF, &opts) {
+        Ok(info) => {
+            println!("✅ Proof generation successful");
+            info
+        }
+        Err(e) => return Err(anyhow::anyhow!("Proof generation failed: {}", e)),
+    };
+
+    let receipt = prove_info.receipt;
+    
+    println!("🔍 Analyzing receipt type...");
+    match &receipt.inner {
+        risc0_zkvm::InnerReceipt::Groth16(_) => {
+            println!("✅ Groth16 receipt generated successfully");
+        }
+        _ => {
+            println!("❌ Expected Groth16 receipt but got different type");
+        }
+    }
+
+    println!("🔍 Attempting to decode final receipt journal...");
+
+    // Extract the journal bytes directly like the RISC Zero template
+    let journal = receipt.journal.bytes.clone();
+
+    println!("🔍 RAW JOURNAL DEBUG:");
+    println!("  Length: {} bytes", journal.len());
+    println!("  Hex: {}", hex::encode(&journal));
+    println!("  First 32 bytes: {:?}", &journal[..journal.len().min(32)]);
+
+    // Try to decode using the same pattern as the RISC Zero template
+    let decoded_result = <(u64, String, String, u64)>::abi_decode(&journal);
+
+    match decoded_result {
+        Ok(decoded) => {
+            let score = decoded.0;
+            let server_name = decoded.1;
+            let state_root_provider = decoded.2;
+            let block_number = decoded.3;
+
+            println!("✅ Journal decoded successfully:");
+            println!("  Score: {}", score);
+            println!("  Server: '{}'", server_name);
+            println!("  Provider: '{}'", state_root_provider);
+            println!("  Block: {}", block_number);
+
+            // Test what the contract will generate for comparison
+            let contract_journal = (score, server_name.clone(), state_root_provider.clone(), block_number).abi_encode();
+            println!("\n🔍 CONTRACT COMPARISON:");
+            println!("  Guest journal:    {} bytes - {}", journal.len(), hex::encode(&journal));
+            println!("  Contract journal: {} bytes - {}", contract_journal.len(), hex::encode(&contract_journal));
+            println!("  Journals match: {}", journal == contract_journal);
+
+            if journal != contract_journal {
+                println!("❌ MISMATCH DETAILS:");
+                let min_len = journal.len().min(contract_journal.len());
+                let mut diff_count = 0;
+                for i in 0..min_len {
+                    if journal[i] != contract_journal[i] {
+                        if diff_count < 10 { // Only show first 10 differences
+                            println!("    Byte {}: guest={:02x} vs contract={:02x}", i, journal[i], contract_journal[i]);
+                        }
+                        diff_count += 1;
+                    }
+                }
+                if diff_count > 10 {
+                    println!("    ... and {} more differences", diff_count - 10);
+                }
+                if journal.len() != contract_journal.len() {
+                    println!("    Length differs: guest={} vs contract={}", journal.len(), contract_journal.len());
+                }
+            } else {
+                println!("✅ Journals match perfectly!");
+            }
+
+            // Also test the hash that will be used for verification
+            let journal_hash = alloy_primitives::keccak256(&journal);
+            let contract_hash = alloy_primitives::keccak256(&contract_journal);
+            println!("\n🔍 HASH COMPARISON:");
+            println!("  Guest hash:    0x{}", hex::encode(journal_hash));
+            println!("  Contract hash: 0x{}", hex::encode(contract_hash));
+            println!("  Hashes match:  {}", journal_hash == contract_hash);
+
+            let seal = encode_seal(&receipt)?;
+
+            let wallet = EthereumWallet::from(args.eth_wallet_private_key);
+            let provider = ProviderBuilder::new().wallet(wallet).connect_http(args.rpc_url);
+            let contract = ICreditScore::new(args.contract, provider);
+
+            let runtime = tokio::runtime::Runtime::new()?;
+
+            // Test the contract's debugAbiEncode for comparison
+            
+          
+
+            println!("\n✅ About to call submitCreditScore with RAW JOURNAL:");
+            println!("  Score: {}", score);
+            println!("  Server: '{}'", server_name);
+            println!("  Provider: '{}'", state_root_provider);
+            println!("  Block: {}", block_number);
+            println!("  Journal: {} bytes", journal.len());
+            println!("  Journal hex: {}", hex::encode(&journal[..64.min(journal.len())]));
+            
+            // FIXED: Use the new contract interface that accepts raw journal
+            let call = contract.submitCreditScoreFromJournal(
+                seal.into(),
+                journal.into(),  // Pass the raw journal bytes from the guest
+            );
+
+            let pending_tx = runtime.block_on(call.send())?;
+            let tx_receipt = runtime.block_on(pending_tx.get_receipt())?;
+
+            println!("✅ On-chain TX hash: {:?}", tx_receipt.transaction_hash);
+
+        }
+        Err(e) => {
+            println!("❌ Failed to decode journal: {}", e);
+            println!("This suggests the guest is not committing ABI-encoded data properly");
+            
+            // Try to see if it's bincode or some other format
+            if let Ok(bincode_decoded) = bincode::deserialize::<(u64, String, String, u64)>(&journal) {
+                println!("🔍 Journal appears to be bincode encoded instead:");
+                println!("  Score: {}", bincode_decoded.0);
+                println!("  Server: '{}'", bincode_decoded.1);
+                println!("  Provider: '{}'", bincode_decoded.2);
+                println!("  Block: {}", bincode_decoded.3);
+                
+                println!("\n🔍 Converting bincode to ABI encoding for comparison:");
+                let abi_encoded = (bincode_decoded.0, bincode_decoded.1, bincode_decoded.2, bincode_decoded.3).abi_encode();
+                println!("  ABI encoded: {} bytes - {}", abi_encoded.len(), hex::encode(&abi_encoded));
+            }
+            
+            return Err(anyhow::anyhow!("Journal decoding failed: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+fn load_receipt(receipt_path: &str) -> Result<(Receipt, Vec<u8>)> {
+    println!("🔍 Loading receipt from: {}", receipt_path);
+    let mut file = File::open(receipt_path)?;
+    let mut receipt_bytes = Vec::new();
+    file.read_to_end(&mut receipt_bytes)?;
+    
+    let receipt: Receipt = bincode::deserialize(&receipt_bytes)
+        .map_err(|e| anyhow::anyhow!("Failed to deserialize receipt: {}", e))?;
+
+    let journal_bytes = receipt.journal.bytes.clone();
+    Ok((receipt, journal_bytes))
+}
+
+#![no_std]
+#![no_main]
+extern crate alloc;
+use alloc::{string::String, vec::Vec, vec};
+use risc0_zkvm::guest::env;
+use risc0_zkvm::serde::from_slice;
+use serde::{Deserialize, Serialize};
+use ethereum_types::{H256, U256};
+use alloy_sol_types::SolValue;
+use score_calculation::{
+    CreditInput, PaymentHistory, TrustLevel, CreditScoreBreakdown,
+    calculate_score
+};
+
+risc0_zkvm::guest::entry!(main);
+
+const TRADFI_PROOF_IMAGE_ID: [u32; 8] = [
+    0x720afb3a, 0xe6dfd539, 0x727f1629, 0xb9653d26,
+    0x183da913, 0x168cb59c, 0xb70d0d1a, 0x063ce56b,
+];
+const ACCOUNT_PROOF_IMAGE_ID: [u32; 8] = [
+    0xbb602230, 0x67951e01, 0xd4418e62, 0xe947bfa6,
+    0x610d6021, 0x78a63884, 0x0e4d6fc6, 0x9fe342a1,
+];
+const STATEROOT_PROOF_IMAGE_ID: [u32; 8] = [
+    0xab8e6209, 0x1f2a7970, 0xacdd7e5d, 0xe74ca169,
+    0x2ed86810, 0x9189b237, 0x8a8b2512, 0x9706dfbb,
+];
+
+// Input structures
+#[derive(Debug, Serialize, Deserialize)]
+struct VerificationOutput {
+    is_valid: bool,
+    server_name: String,
+    score: Option<u64>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ProofOutput {
+    exists: bool,
+    nonce: Option<U256>,
+    balance: Option<U256>,
+    storage_root: Option<H256>,
+    code_hash: Option<H256>,
+    storage_value: Option<U256>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct StateRootOutput {
+    is_valid: bool,
+    server_name: String,
+    state_root: Option<String>,
+    block_number: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct HybridCreditScore {
+    score: u16, 
+    server_name: String,
+    state_root_provider: String,
+    block_number: u64,
+    breakdown: CreditScoreBreakdown,
+}
+
+fn main() {
+    // 1) Read the journal bytes from all three proofs
+    let tradfi_journal_bytes: Vec<u8> = env::read();
+    let account_journal_bytes: Vec<u8> = env::read();
+    let stateroot_journal_bytes: Vec<u8> = env::read();
+
+    // 2) Verify all three proofs
+    if let Err(_e) = env::verify(TRADFI_PROOF_IMAGE_ID, &tradfi_journal_bytes) {
+        commit_zero_score();
+        return;
+    }
+    if let Err(_e) = env::verify(ACCOUNT_PROOF_IMAGE_ID, &account_journal_bytes) {
+        commit_zero_score();
+        return;
+    }
+    if let Err(_e) = env::verify(STATEROOT_PROOF_IMAGE_ID, &stateroot_journal_bytes) {
+        commit_zero_score();
+        return;
+    }
+
+    // 3) Decode all verified journals
+    let tradfi_data: VerificationOutput = match from_slice(&tradfi_journal_bytes) {
+        Ok(data) => data,
+        Err(_) => {
+            commit_zero_score();
+            return;
+        }
+    };
+    let account_data: ProofOutput = match from_slice(&account_journal_bytes) {
+        Ok(data) => data,
+        Err(_) => {
+            commit_zero_score();
+            return;
+        }
+    };
+    let stateroot_data: StateRootOutput = match from_slice(&stateroot_journal_bytes) {
+        Ok(data) => data,
+        Err(_) => {
+            commit_zero_score();
+            return;
+        }
+    };
+
+    // 4) Validate all proofs and cross-verify state root
+    if !tradfi_data.is_valid {
+        let hybrid_score = HybridCreditScore {
+            score: 0,
+            server_name: tradfi_data.server_name.clone(),
+            state_root_provider: stateroot_data.server_name.clone(),
+            block_number: parse_block_number(&stateroot_data.block_number),
+            breakdown: create_zero_breakdown(),
+        };
+        commit_hybrid_score(&hybrid_score);
+        return;
+    }
+
+    if !stateroot_data.is_valid {
+        let hybrid_score = HybridCreditScore {
+            score: 0,
+            server_name: tradfi_data.server_name.clone(),
+            state_root_provider: stateroot_data.server_name.clone(),
+            block_number: parse_block_number(&stateroot_data.block_number),
+            breakdown: create_zero_breakdown(),
+        };
+        commit_hybrid_score(&hybrid_score);
+        return;
+    }
+
+    if !validate_state_root_consistency(&account_data, &stateroot_data) {
+        let hybrid_score = HybridCreditScore {
+            score: 0,
+            server_name: tradfi_data.server_name.clone(),
+            state_root_provider: stateroot_data.server_name.clone(),
+            block_number: parse_block_number(&stateroot_data.block_number),
+            breakdown: create_zero_breakdown(),
+        };
+        commit_hybrid_score(&hybrid_score);
+        return;
+    }
+
+    // 5) Calculate hybrid credit score using the library
+    let hybrid_score = calculate_hybrid_score_with_lib(&tradfi_data, &account_data, &stateroot_data);
+
+    // 6) Commit the result
+    commit_hybrid_score(&hybrid_score);
+}
+
+fn parse_block_number(block_number_str: &Option<String>) -> u64 {
+    block_number_str
+        .as_ref()
+        .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
+        .unwrap_or(0)
+}
+
+fn validate_state_root_consistency(
+    account_data: &ProofOutput,
+    stateroot_data: &StateRootOutput,
+) -> bool {
+    true 
+}
+
+fn calculate_hybrid_score_with_lib(
+    tradfi_data: &VerificationOutput,
+    account_data: &ProofOutput,
+    stateroot_data: &StateRootOutput,
+) -> HybridCreditScore {
+   
+    let current_block = parse_block_number(&stateroot_data.block_number);
+    
+    // Estimate account age in blocks based on nonce 
+    let estimated_account_age_blocks = if let Some(nonce) = account_data.nonce {
+        let nonce_value = nonce.as_u64();
+        match nonce_value {
+            0 => 2000,       
+            1..=10 => 10000,  
+            11..=50 => 50000,
+            51..=100 => 200000, 
+            _ => 500000,     
+        }
+    } else {
+        0 
+    };
+    
+    let first_interaction_block = current_block.saturating_sub(estimated_account_age_blocks);
+    
+    let credit_input = CreditInput {
+        first_interaction_block,
+        current_block,
+        payment_history: PaymentHistory {
+            on_time_payments: 0, // n/a yet
+            liquidations: 0,
+        },
+        total_eth_balance: account_data.balance
+            .map(|b| b.as_u128())
+            .unwrap_or(0),
+        current_debt: 0,
+        tradify_credit_score: tradfi_data.score.map(|s| s as u16),
+        trust_level: TrustLevel::Platinum,
+    };
+
+    let breakdown = calculate_score(credit_input)
+        .expect("Robust library should never fail with valid inputs");
+
+    HybridCreditScore {
+        score: breakdown.final_score,
+        server_name: tradfi_data.server_name.clone(),
+        state_root_provider: stateroot_data.server_name.clone(),
+        block_number: current_block,
+        breakdown,
+    }
+}
+
+fn create_zero_breakdown() -> CreditScoreBreakdown {
+    CreditScoreBreakdown {
+        length_of_history_score: 300,
+        payment_history_score: 300,
+        credit_utilization_score: 300,
+        tradify_integration_score: 300,
+        trust_factor_score: 300,
+        final_score: 300,
+    }
+}
+
+// DEBUG VERSION: Use RISC Zero template pattern for committing
+fn commit_hybrid_score(hybrid: &HybridCreditScore) {
+    let score_u64 = hybrid.score as u64;
+    let server_name = hybrid.server_name.clone();
+    let state_root_provider = hybrid.state_root_provider.clone();
+    let block_number = hybrid.block_number;
+    
+    // Create a tuple and ABI encode it like the RISC Zero template
+    let data = (score_u64, server_name, state_root_provider, block_number);
+    
+    // Get the ABI encoded bytes
+    let encoded = data.abi_encode();
+    
+    // Use the same pattern as the RISC Zero template
+    env::commit_slice(encoded.as_slice());
+}
+
+fn commit_zero_score() {
+    // Commit zero values using the same ABI encoding pattern
+    let data = (0u64, String::new(), String::new(), 0u64);
+    let encoded = data.abi_encode();
+    env::commit_slice(encoded.as_slice());
+}
+
+
+// SPDX-License-Identifier: Apache-2.0
+pragma solidity ^0.8.20;
+
+import {IRiscZeroVerifier} from "risc0/IRiscZeroVerifier.sol";
+import {ImageID} from "./risc0/ImageID.sol";
+
+contract CreditScore {
+    IRiscZeroVerifier public immutable verifier;
+    bytes32 public constant imageId = ImageID.GUEST_ID;
+    
+    uint256 public constant SCORE_EXPIRY_PERIOD = 90 days;
+    
+    mapping(string => bool) public authorizedServers;
+    mapping(string => bool) public authorizedStateRootProviders;
+    mapping(address => CreditScoreData) public creditScores;
+
+    struct CreditScoreData {
+        uint64 score;
+        string serverName;
+        string stateRootProvider;
+        uint256 timestamp;
+        bool isValid;
+    }
+
+    event CreditScoreSubmitted(
+        address indexed user,
+        uint64 score,
+        string serverName,
+        string stateRootProvider,
+        uint256 timestamp
+    );
+    event ServerAuthorized(string serverName, bool authorized);
+    event StateRootProviderAuthorized(string providerName, bool authorized);
+
+    constructor(IRiscZeroVerifier _verifier) {
+        verifier = _verifier;
+
+        authorizedServers["httpbin.org"] = true;
+        authorizedServers["openbanking-api-826260723607.europe-west3.run.app"] = true;
+        authorizedServers["schufa.de"] = true;
+        
+        authorizedStateRootProviders["sonic-blaze.g.alchemy.com"] = true;
+        authorizedStateRootProviders["infura.com"] = true;
+    }
+
+    // SECURE: Validates that provided parameters match the journal content
+    function submitCreditScore(
+        uint64 score,
+        string calldata serverName,
+        string calldata stateRootProvider,
+        uint64 blockNumber,
+        bytes calldata seal,
+        bytes calldata journal
+    ) external {
+        require(authorizedServers[serverName], "TradFi server not authorized");
+        require(authorizedStateRootProviders[stateRootProvider], "State root provider not authorized");
+
+        // 1. First verify the RISC Zero proof
+        verifier.verify(seal, imageId, sha256(journal));
+
+        // 2. Then validate that the provided parameters match what's in the journal
+        // Decode the journal to extract the actual values
+        (uint64 journalScore, string memory journalServer, string memory journalProvider, uint64 journalBlock) 
+            = abi.decode(journal, (uint64, string, string, uint64));
+
+        // 3. Ensure provided parameters match journal content
+        require(score == journalScore, "Score mismatch with journal");
+        require(keccak256(bytes(serverName)) == keccak256(bytes(journalServer)), "Server name mismatch with journal");
+        require(keccak256(bytes(stateRootProvider)) == keccak256(bytes(journalProvider)), "Provider mismatch with journal");
+        require(blockNumber == journalBlock, "Block number mismatch with journal");
+
+        // 4. If everything matches, store the verified data
+        creditScores[msg.sender] = CreditScoreData({
+            score: score,
+            serverName: serverName,
+            stateRootProvider: stateRootProvider,
+            timestamp: block.timestamp,
+            isValid: true
+        });
+
+        emit CreditScoreSubmitted(msg.sender, score, serverName, stateRootProvider, block.timestamp);
+    }
+
+    // Alternative: Even more secure - extract data directly from journal
+    function submitCreditScoreFromJournal(
+        bytes calldata seal,
+        bytes calldata journal
+    ) external {
+        // 1. Verify the RISC Zero proof
+        verifier.verify(seal, imageId, sha256(journal));
+
+        // 2. Extract data directly from the verified journal
+        (uint64 score, string memory serverName, string memory stateRootProvider, uint64 blockNumber) 
+            = abi.decode(journal, (uint64, string, string, uint64));
+
+        // 3. Validate authorization using extracted data
+        require(authorizedServers[serverName], "TradFi server not authorized");
+        require(authorizedStateRootProviders[stateRootProvider], "State root provider not authorized");
+
+        // 4. Store the data extracted directly from the verified journal
+        creditScores[msg.sender] = CreditScoreData({
+            score: score,
+            serverName: serverName,
+            stateRootProvider: stateRootProvider,
+            timestamp: block.timestamp,
+            isValid: true
+        });
+
+        emit CreditScoreSubmitted(msg.sender, score, serverName, stateRootProvider, block.timestamp);
+    }
+
+    function getCreditScore(address user) external view returns (
+        uint64 score,
+        bool isValid,
+        uint256 timestamp
+    ) {
+        CreditScoreData memory userData = creditScores[user];
+        
+        bool notExpired = userData.isValid && 
+                         userData.timestamp > 0 && 
+                         (block.timestamp - userData.timestamp) <= SCORE_EXPIRY_PERIOD;
+        
+        if (notExpired) {
+            return (userData.score, true, userData.timestamp);
+        } else {
+            return (0, false, userData.timestamp);
+        }
+    }
+
+    function authorizeServer(string calldata serverName, bool authorized) external {
+        authorizedServers[serverName] = authorized;
+        emit ServerAuthorized(serverName, authorized);
+    }
+
+    function authorizeStateRootProvider(string calldata providerName, bool authorized) external {
+        authorizedStateRootProviders[providerName] = authorized;
+        emit StateRootProviderAuthorized(providerName, authorized);
+    }
+
+    // DEBUG FUNCTIONS
+    function debugDecodeJournal(bytes calldata journal) external pure returns (
+        uint64 score,
+        string memory serverName,
+        string memory stateRootProvider,
+        uint64 blockNumber
+    ) {
+        return abi.decode(journal, (uint64, string, string, uint64));
+    }
+
+    function debugVerifyRawJournal(
+        bytes calldata seal,
+        bytes calldata journal
+    ) external view returns (bool) {
+        verifier.verify(seal, imageId, sha256(journal));
+        return true;
+    }
+
+    function isServerAuthorized(string calldata serverName) external view returns (bool) {
+        return authorizedServers[serverName];
+    }
+
+    function isStateRootProviderAuthorized(string calldata providerName) external view returns (bool) {
+        return authorizedStateRootProviders[providerName];
+    }
+}
+
+
+but I still get  Attempting to decode TradFi receipt journal...
+✅ TradFi receipt decoded successfully
+  - is_valid: true
+  - server_name: 'openbanking-api-826260723607.europe-west3.run.app'
+  - score: Some(28)
+🔍 Attempting to decode Account receipt journal...
+✅ Account receipt decoded successfully
+  - exists: true
+  - balance: Some(367474808980032378259524)
+  - nonce: Some(6)
+🔍 Attempting to decode StateRoot receipt journal...
+✅ StateRoot receipt decoded successfully
+  - is_valid: true
+  - server_name: 'sonic-blaze.g.alchemy.com'
+  - state_root: Some("0xd79c06f72634997870dde97723b2aad15792f4f303837c1ff36f026808d66d29")
+  - block_number: Some("0x68b3")
+TRADFI_PROOF valid
+ACCOUNT_PROOF valid
+STATEROOT_PROOF valid
+🔍 Building ExecutorEnv with all three assumptions...
+🔍 Starting proof generation...
+✅ Proof generation successful
+🔍 Analyzing receipt type...
+✅ Groth16 receipt generated successfully
+🔍 Attempting to decode final receipt journal...
+🔍 RAW JOURNAL DEBUG:
+  Length: 320 bytes
+  Hex: 00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000298000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000068b300000000000000000000000000000000000000000000000000000000000000316f70656e62616e6b696e672d6170692d3832363236303732333630372e6575726f70652d77657374332e72756e2e6170700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000019736f6e69632d626c617a652e672e616c6368656d792e636f6d00000000000000
+  First 32 bytes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32]
+✅ Journal decoded successfully:
+  Score: 664
+  Server: 'openbanking-api-826260723607.europe-west3.run.app'
+  Provider: 'sonic-blaze.g.alchemy.com'
+  Block: 26803
+
+🔍 CONTRACT COMPARISON:
+  Guest journal:    320 bytes - 00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000298000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000068b300000000000000000000000000000000000000000000000000000000000000316f70656e62616e6b696e672d6170692d3832363236303732333630372e6575726f70652d77657374332e72756e2e6170700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000019736f6e69632d626c617a652e672e616c6368656d792e636f6d00000000000000
+  Contract journal: 320 bytes - 00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000298000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000068b300000000000000000000000000000000000000000000000000000000000000316f70656e62616e6b696e672d6170692d3832363236303732333630372e6575726f70652d77657374332e72756e2e6170700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000019736f6e69632d626c617a652e672e616c6368656d792e636f6d00000000000000
+  Journals match: true
+✅ Journals match perfectly!
+
+🔍 HASH COMPARISON:
+  Guest hash:    0x0fa03231d98b8e07d401ca6dc41dbcabf5f3439500b327f6d6e159c92dee9b24
+  Contract hash: 0x0fa03231d98b8e07d401ca6dc41dbcabf5f3439500b327f6d6e159c92dee9b24
+  Hashes match:  true
+
+✅ About to call submitCreditScore with RAW JOURNAL:
+  Score: 664
+  Server: 'openbanking-api-826260723607.europe-west3.run.app'
+  Provider: 'sonic-blaze.g.alchemy.com'
+  Block: 26803
+  Journal: 320 bytes
+  Journal hex: 00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000298
+Error: server returned an error response: error code 3: execution reverted: custom error 0x439cc0cd, data: "0x439cc0cd"
+timwhooks@eduroam-141-23-178-172 score_publisher % 
+
+can you fix it to make it work securely, in the sense that the same inputs have to be used as in the journal

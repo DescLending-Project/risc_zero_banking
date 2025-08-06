@@ -3,6 +3,9 @@ name = "host"
 version = "0.1.0"
 edition = "2021"
 
+
+
+
 [dependencies]
 methods = { workspace = true }
 risc0-zkvm = { workspace = true, default-features = true }
@@ -22,4 +25,4 @@ serde = { version = "1.0", default-features = false, features = ["derive", "allo
 bincode = { workspace = true }
 hex = { workspace = true }
 ethereum-types = { workspace = true }
-sha2 = "0.10"#
+sha2 = "0.10"
