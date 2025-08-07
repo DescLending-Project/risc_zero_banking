@@ -7,21 +7,20 @@ import {ImageID} from "./risc0/ImageID.sol";
 contract CreditScore {
     IRiscZeroVerifier public immutable verifier;
     bytes32 public constant imageId = ImageID.GUEST_ID;
-    uint256 public constant SCORE_EXPIRY_PERIOD = 90 days;
-    uint256 public constant TRADFI_DATA_MAX_AGE = 10 days; 
+    uint256 public constant TRADIFY_DATA_MAX_AGE = 1 days;
+    uint256 public constant BLCOKCHAIN_DATA_MAX_AGE = 7200; // this is about one day
 
     mapping(string => bool) public authorizedServers;
     mapping(string => bool) public authorizedStateRootProviders;
     mapping(address => CreditScoreData) public creditScores;
     mapping(bytes32 => bool) public usedAccountsNullifiers;
-    mapping(bytes32 => mapping(uint256 => bytes32[])) public ownedAccountNullifiers; // maps from lender ETH Account nullifier to mapping of each of his submitted CreditScores( that are identified by the block height of submission ) to used nullifiers in that credit score calculation
-    mapping(bytes32 => bytes32) public tradifyNullifiers; // mapping from tradify score Nullifier to its owner ETH accounts nullifier
-    mapping(bytes32 => uint64) public storedCreditScoresNumber; // mapping from tradifyNullifier to the number of creditScores that are currently stored on the contract for him
+    mapping(string => bytes32) public tradifyNullifiers; // mapping from tradify score Nullifier to its owner ETH accounts nullifier
 
     struct CreditScoreData {
         uint64 score;
         uint256 timestamp;
-        bool isValid;
+        bool isUnused;
+        bytes32[] nullifiers;
     }
 
     struct JournalData {
@@ -29,9 +28,9 @@ contract CreditScore {
         string serverName;
         string stateRootProvider;
         uint64 blockNumber;
-        string userIdHash;             
-        uint64 tradfiDateTimestamp;     
-        string userAddress;
+        string tradifyNullifier; // NOTE: 1.Lets just call this tradifyNullifier 2. how long is this string? Switching to bytes32 would be nice
+        uint64 tradfiDateTimestamp;
+        address userAddress; // NOTE: this should be an ETH address  instead of string
         bytes32[] allNullifiers;
     }
 
@@ -39,184 +38,194 @@ contract CreditScore {
         address indexed user,
         uint64 score,
         uint256 timestamp,
-        string userIdHash               
+        string tradifyNullifier
     );
 
     constructor(IRiscZeroVerifier _verifier) {
         verifier = _verifier;
-        authorizedServers["openbanking-api-826260723607.europe-west3.run.app"] = true;
+        authorizedServers[
+            "openbanking-api-826260723607.europe-west3.run.app"
+        ] = true;
         authorizedStateRootProviders["sonic-blaze.g.alchemy.com"] = true;
     }
 
-    function submitCreditScore(
-        JournalData calldata journalData,
-        bytes calldata seal
-    ) external {
-        require(authorizedServers[journalData.serverName], "TradFi server not authorized");
-        require(authorizedStateRootProviders[journalData.stateRootProvider], "State root provider not authorized");
+    // Validates the content of credit Score journalData
+    // 1. Checks if if the tradify score and stateRoot came from authorizedSources
+    // 2. Checks the fresshnes of the calculated data
+    // 3. Check and store  the creditScore related account nullifiers
+    function validateCreditScoreData(
+        JournalData calldata journalData
+    ) internal {
+        require(
+            authorizedServers[journalData.serverName],
+            "TradFi server not authorized"
+        );
+        require(
+            authorizedStateRootProviders[journalData.stateRootProvider],
+            "State root provider not authorized"
+        );
 
         require(
             journalData.blockNumber >= block.number, // has to be adjusted in real production, shall just pass for now
             "State root data is too old"
         );
-
-        // Validate TradFi timestamp is within acceptable range
-        // TODO: Re-enable timestamp validation for production deployment
-        // uint64 currentDateTimestamp = getCurrentDateTimestamp();
-        
-        // DEVELOPMENT ONLY: Skip timestamp validation for Anvil testing
-        // Remove this section and uncomment above for production
-        /*
-        uint64 minValidTimestamp;
-        if (currentDateTimestamp >= uint64(TRADFI_DATA_MAX_AGE)) {
-            minValidTimestamp = currentDateTimestamp - uint64(TRADFI_DATA_MAX_AGE);
-        } else {
-            minValidTimestamp = 0; // If we're within 10 days of epoch, allow any timestamp
-        }
-        
         require(
-            journalData.tradfiDateTimestamp >= minValidTimestamp,
-            "TradFi data is older than 10 days"
+            block.timestamp - journalData.tradfiDateTimestamp <=
+                TRADIFY_DATA_MAX_AGE,
+            " Tradify data is to old"
         );
-        
+
         require(
-            journalData.tradfiDateTimestamp <= currentDateTimestamp + 1 days,
-            "TradFi timestamp cannot be too far in the future"
+            block.number - journalData.blockNumber <= BLCOKCHAIN_DATA_MAX_AGE,
+            "Blockchain data is to old"
         );
-        */
 
-        // Verify the ZK proof
-        bytes memory journal = abi.encode(journalData);
-        bytes32 journalHash = sha256(journal);
-        verifier.verify(seal, imageId, journalHash);
+        deleteOldNullifiers(journalData.userAddress);
+        addNewNullifiers(
+            journalData.allNullifiers,
+            journalData.tradifyNullifier,
+            journalData.userAddress
+        );
+    }
 
+    function submitTEECreditScore(
+        JournalData calldata journalData,
+        bytes calldata attestation
+    ) external {
+        // TODO: add the attestation verificcation call
+        require(attestation.length > 0, "Attestation needs to be provided");
+
+        validateCreditScoreData(journalData);
         // Store the credit score
         creditScores[msg.sender] = CreditScoreData(
             journalData.score,
             block.timestamp,
-            true
+            false,
+            journalData.allNullifiers
         );
 
         emit CreditScoreSubmitted(
             msg.sender,
             journalData.score,
             block.timestamp,
-            journalData.userIdHash
+            journalData.tradifyNullifier
         );
     }
 
-    function getCreditScore(address user) external view returns (
-        uint64 score,
-        bool isValid,
-        uint256 timestamp
-    ) {
-        CreditScoreData memory userData = creditScores[user];
-        bool notExpired = userData.isValid &&
-            userData.timestamp > 0 &&
-            (block.timestamp - userData.timestamp) <= SCORE_EXPIRY_PERIOD;
+    // NOTE: we might have to change the name of this method to submitR0CreditScore
+    function submitCreditScore(
+        JournalData calldata journalData,
+        bytes calldata seal
+    ) external {
+        // Verify the ZK proof
+        bytes memory journal = abi.encode(journalData);
+        bytes32 journalHash = sha256(journal);
+        verifier.verify(seal, imageId, journalHash);
 
-        if (notExpired) {
-            return (
-                userData.score,
-                true,
-                userData.timestamp
-            );
-        } else {
-            return (
-                0,
-                false,
-                userData.timestamp
-            );
-        }
+        validateCreditScoreData(journalData);
+
+        // Store the credit score
+        creditScores[msg.sender] = CreditScoreData(
+            journalData.score,
+            block.timestamp,
+            false,
+            journalData.allNullifiers
+        );
+
+        emit CreditScoreSubmitted(
+            msg.sender,
+            journalData.score,
+            block.timestamp,
+            journalData.tradifyNullifier
+        );
     }
 
-    // Helper function to get current date timestamp (today at 00:00:00 UTC)
-    function getCurrentDateTimestamp() internal view returns (uint64) {
-        // Convert current timestamp to date-only timestamp
-        return uint64((block.timestamp / 86400) * 86400);
+    function getCreditScore(
+        address user
+    ) external view returns (uint64 score, bool isUnused, uint256 timestamp) {
+        return (
+            creditScores[user].score,
+            creditScores[user].isUnused,
+            creditScores[user].timestamp
+        );
     }
 
-    // View function to check if a TradFi timestamp would be valid
-    // DEVELOPMENT ONLY: Always returns true for Anvil testing
-    function isValidTradfiTimestamp(uint64 tradfiTimestamp) external view returns (bool) {
-        // TODO: Re-enable for production
-        return true; // Always pass during development
-        
-        /*
-        uint64 currentDateTimestamp = getCurrentDateTimestamp();
-        
-        // Prevent underflow
-        uint64 minValidTimestamp;
-        if (currentDateTimestamp >= uint64(TRADFI_DATA_MAX_AGE)) {
-            minValidTimestamp = currentDateTimestamp - uint64(TRADFI_DATA_MAX_AGE);
-        } else {
-            minValidTimestamp = 0;
-        }
-        
-        return tradfiTimestamp >= minValidTimestamp &&
-               tradfiTimestamp <= currentDateTimestamp + 1 days;
-        */
+    function markCreditScoreAsUsed(address user) external {
+        creditScores[user].isUnused = false;
     }
 
-    // NOTE: first nullifier in the userOwnedAccountsNullifiers must be the nullifier of the eth account (lender account) for which user tries to get a loan.(this is checked during defi_inputs_validation)
-    function addNullifiers(bytes32[] calldata userOwnedAccountsNullifiers, bytes32 userTradifyNullifier) external {
-        require(tradifyNullifiers[userTradifyNullifier] == bytes32(0) || tradifyNullifiers[userTradifyNullifier] == userOwnedAccountsNullifiers[0], "User tries to use not his tradify score.");
-        
-        // storing the userTradifyNullifier
-        tradifyNullifiers[userTradifyNullifier] = userOwnedAccountsNullifiers[0];
+    function addNewNullifiers(
+        bytes32[] calldata userOwnedAccountsNullifiers,
+        string calldata userTradifyNullifier,
+        address lenderAddress
+    ) internal {
+        require(
+            tradifyNullifiers[userTradifyNullifier] == bytes32(0) ||
+                tradifyNullifiers[userTradifyNullifier] ==
+                userOwnedAccountsNullifiers[0],
+            "User tries to use not his tradify score."
+        );
+
+        // storing the userTradifyNullifier in relation to his lending acount nullifier
+        tradifyNullifiers[userTradifyNullifier] = userOwnedAccountsNullifiers[
+            0
+        ];
 
         // verifying that the users ethAccount was not used for calculation of creditScore for some other ethAccount
-        // NOTE: we allow user to reuse his lender account, as we are tracking the amount of funds that he owes us and this amount is included in the score calculation
-        if(usedAccountsNullifiers[userOwnedAccountsNullifiers[0]]){
-            // check if the nullifier was used by the lender account or as one of the ownedAccounts
-            require(storedCreditScoresNumber[userOwnedAccountsNullifiers[0]] > 0, "Provided User lender account is already in use by some other lender account.");
+        if (usedAccountsNullifiers[userOwnedAccountsNullifiers[0]]) {
+            // check if the nullifier was used by the lender account or as one of the ownedAccounts by sombody else
+            require(
+                creditScores[lenderAddress].nullifiers[0] ==
+                    userOwnedAccountsNullifiers[0],
+                "Provided User lender account is already in use by some other lender account."
+            );
         }
 
         // storing the lender accounts nullifier
         usedAccountsNullifiers[userOwnedAccountsNullifiers[0]] = true;
-        ownedAccountNullifiers[userOwnedAccountsNullifiers[0]][block.number].push(userOwnedAccountsNullifiers[0]);
-        storedCreditScoresNumber[userOwnedAccountsNullifiers[0]]++;
 
         // iterating over provided nullifiers checking if they were not already in use and storing them
-        for (uint i = 1; i < userOwnedAccountsNullifiers.length; i++){
-            require(usedAccountsNullifiers[userOwnedAccountsNullifiers[i]] == false, 'User tries to use ethAccount for his maxcredit score calculation, that is already in use.');
+        for (uint i = 1; i < userOwnedAccountsNullifiers.length; i++) {
+            require(
+                usedAccountsNullifiers[userOwnedAccountsNullifiers[i]] == false,
+                "User tries to use ethAccount for his maxcredit score calculation, that is already in use."
+            );
             // storing the nullifier
             usedAccountsNullifiers[userOwnedAccountsNullifiers[i]] = true;
-
-            // storing the accountsNullifier in array of the lender account nullifier in relation to the blockheight at which the creditScore was submitted
-            ownedAccountNullifiers[userOwnedAccountsNullifiers[0]][block.number].push(userOwnedAccountsNullifiers[i]);
         }
     }
 
     // NOTE: should be called when the CreditScore gets deleted from the contract
     // it deletes all nullifiers related to the creditScore that was submitted at the creditScoreSubmissionBlock height
-    function deleteNullifiers(uint256 creditScoreSubmissionBlockHeight, bytes32 lenderNullifier) external {
-        require(ownedAccountNullifiers[lenderNullifier][creditScoreSubmissionBlockHeight].length > 0, "CreditScore related nullifiers not found.");
-
-        // Deleting all usedAccountsNullifiers for this CreditScore calculation
-        for (uint256 index = 1; index < ownedAccountNullifiers[lenderNullifier][creditScoreSubmissionBlockHeight].length; index++) {
-            delete usedAccountsNullifiers[ownedAccountNullifiers[lenderNullifier][creditScoreSubmissionBlockHeight][index]];
+    function deleteOldNullifiers(address lenderAddress) internal {
+        if (creditScores[lenderAddress].nullifiers.length <= 0) {
+            return;
         }
 
-        // deleting the array of associated nullifiers
-        delete ownedAccountNullifiers[lenderNullifier][creditScoreSubmissionBlockHeight];
-
-        require(storedCreditScoresNumber[lenderNullifier] > 0, "User did not have any Credit Score");
-        storedCreditScoresNumber[lenderNullifier]--;
-
-        // in case where this was the last used user credit score, user can utilize this lending account as ownedAccount in score calculation for different lending account
-        if(storedCreditScoresNumber[lenderNullifier] == 0){
-            delete usedAccountsNullifiers[lenderNullifier];
-            delete storedCreditScoresNumber[lenderNullifier];
+        // Deleting all usedAccountsNullifiers for this CreditScore calculation
+        for (
+            uint256 index = 0;
+            index < creditScores[lenderAddress].nullifiers.length;
+            index++
+        ) {
+            delete usedAccountsNullifiers[
+                creditScores[lenderAddress].nullifiers[index]
+            ];
         }
     }
 
     // need proper auth in deployment
-    function authorizeServer(string calldata serverName, bool authorized) external {
+    function authorizeServer(
+        string calldata serverName,
+        bool authorized
+    ) external {
         authorizedServers[serverName] = authorized;
     }
 
-    function authorizeStateRootProvider(string calldata providerName, bool authorized) external {
+    function authorizeStateRootProvider(
+        string calldata providerName,
+        bool authorized
+    ) external {
         authorizedStateRootProviders[providerName] = authorized;
     }
 }
