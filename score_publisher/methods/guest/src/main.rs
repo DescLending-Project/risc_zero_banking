@@ -17,8 +17,14 @@ use defi_inputs_serializer::DefiProofOutput;
 risc0_zkvm::guest::entry!(main);
 
 const TRADFI_PROOF_IMAGE_ID: [u32; 8] = [
-    0x6bdc87e2, 0xffa338c6, 0x6490939f, 0xf75a635f,
-    0x6a03e0e6, 0xddc4307a, 0xf519f7ac, 0x6865edb3,
+    0x7bd6867a,
+    0xd6e5068c,
+    0x66cc3bad,
+    0x5bd072c9,
+    0x4475f55a,
+    0x6e0c7d62,
+    0xb70bbab8,
+    0x0cc197d3,
 ];
 
 const DEFI_PROOF_IMAGE_ID: [u32; 8] = [
@@ -36,8 +42,8 @@ struct VerificationOutput {
     is_valid: bool,
     server_name: String,
     score: Option<u64>,
-    user_id: Option<String>,
-    date: Option<String>,
+    user_id_hash: Option<String>, 
+    tradfi_date_timestamp: Option<u64>, 
     error: Option<String>,
 }
 
@@ -56,8 +62,8 @@ struct HybridCreditScore {
     server_name: String,
     state_root_provider: String,
     block_number: u64,
-    user_id: String,
-    tradfi_date: String,
+    user_id_hash: String,
+    tradfi_date_timestamp: u64, 
     user_address: String,
     all_nullifiers: Vec<H256>,
     breakdown: CreditScoreBreakdown,
@@ -124,8 +130,8 @@ fn create_zero_score_hybrid(
         server_name: server_name.to_string(),
         state_root_provider: stateroot_data.server_name.clone(),
         block_number: parse_block_number(&stateroot_data.block_number),
-        user_id: tradfi_data.user_id.clone().unwrap_or_default(),
-        tradfi_date: tradfi_data.date.clone().unwrap_or_default(),
+        user_id_hash: tradfi_data.user_id_hash.clone().unwrap_or_default(),
+        tradfi_date_timestamp: tradfi_data.tradfi_date_timestamp.unwrap_or(0),
         user_address: h160_to_string(defi_data.user_address),
         all_nullifiers: bytes32_vec_to_h256_vec(defi_data.all_nullifiers.clone()),
         breakdown: create_zero_breakdown(),
@@ -162,8 +168,8 @@ fn calculate_hybrid_score_with_lib(
                 server_name: "CALCULATION_FAILED".to_string(),
                 state_root_provider: stateroot_data.server_name.clone(),
                 block_number: current_block,
-                user_id: tradfi_data.user_id.clone().unwrap_or_default(),
-                tradfi_date: tradfi_data.date.clone().unwrap_or_default(),
+                user_id_hash: tradfi_data.user_id_hash.clone().unwrap_or_default(),
+                tradfi_date_timestamp: tradfi_data.tradfi_date_timestamp.unwrap_or(0),
                 user_address: h160_to_string(defi_data.user_address),
                 all_nullifiers: bytes32_vec_to_h256_vec(defi_data.all_nullifiers.clone()),
                 breakdown: create_zero_breakdown(),
@@ -176,8 +182,8 @@ fn calculate_hybrid_score_with_lib(
         server_name: tradfi_data.server_name.clone(),
         state_root_provider: stateroot_data.server_name.clone(),
         block_number: current_block,
-        user_id: tradfi_data.user_id.clone().unwrap_or_default(),
-        tradfi_date: tradfi_data.date.clone().unwrap_or_default(),
+        user_id_hash: tradfi_data.user_id_hash.clone().unwrap_or_default(),
+        tradfi_date_timestamp: tradfi_data.tradfi_date_timestamp.unwrap_or(0),
         user_address: h160_to_string(defi_data.user_address),
         all_nullifiers: bytes32_vec_to_h256_vec(defi_data.all_nullifiers.clone()),
         breakdown,
@@ -193,8 +199,8 @@ sol! {
         string serverName;
         string stateRootProvider; 
         uint64 blockNumber;
-        string userId;
-        string tradfiDate;
+        string userIdHash;          
+        uint64 tradfiDateTimestamp;  
         string userAddress;
         bytes32[] allNullifiers;
     }
@@ -211,8 +217,8 @@ fn commit_hybrid_score(hybrid: &HybridCreditScore) {
         serverName: hybrid.server_name.clone(),
         stateRootProvider: hybrid.state_root_provider.clone(),
         blockNumber: hybrid.block_number,
-        userId: hybrid.user_id.clone(),
-        tradfiDate: hybrid.tradfi_date.clone(),
+        userIdHash: hybrid.user_id_hash.clone(),          
+        tradfiDateTimestamp: hybrid.tradfi_date_timestamp, 
         userAddress: hybrid.user_address.clone(),
         allNullifiers: nullifiers_fixed_bytes,
     };
@@ -227,8 +233,8 @@ fn commit_zero_score() {
         serverName: String::from(""),
         stateRootProvider: String::from(""),
         blockNumber: 0u64,
-        userId: String::from(""),
-        tradfiDate: String::from(""),
+        userIdHash: String::from(""),        
+        tradfiDateTimestamp: 0u64,           
         userAddress: String::from(""),
         allNullifiers: vec![],
     };

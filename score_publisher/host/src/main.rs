@@ -20,8 +20,8 @@ sol! {
         string serverName;
         string stateRootProvider; 
         uint64 blockNumber;
-        string userId;
-        string tradfiDate;
+        string userIdHash;           
+        uint64 tradfiDateTimestamp; 
         string userAddress;
         bytes32[] allNullifiers;
     }
@@ -36,8 +36,8 @@ pub mod credit_score_abi {
                 string serverName;
                 string stateRootProvider;
                 uint64 blockNumber;
-                string userId;
-                string tradfiDate;
+                string userIdHash;           
+                uint64 tradfiDateTimestamp;  
                 string userAddress;
                 bytes32[] allNullifiers;
             }
@@ -81,13 +81,14 @@ struct Args {
     stateroot_receipt_path: String,
 }
 
+
 #[derive(Debug, Serialize, Deserialize)]
 struct VerificationOutput {
     is_valid: bool,
     server_name: String,
     score: Option<u64>,
-    user_id: Option<String>,
-    date: Option<String>,
+    user_id_hash: Option<String>, 
+    tradfi_date_timestamp: Option<u64>, 
     error: Option<String>,
 }
 
@@ -110,6 +111,18 @@ fn load_receipt(receipt_path: &str) -> Result<(Receipt, Vec<u8>)> {
 
     let journal_bytes = receipt.journal.bytes.clone();
     Ok((receipt, journal_bytes))
+}
+
+// Helper function to format timestamp for display
+fn format_timestamp(timestamp: u64) -> String {
+    use std::time::{UNIX_EPOCH, Duration};
+    
+    match UNIX_EPOCH.checked_add(Duration::from_secs(timestamp)) {
+        Some(_datetime) => {
+            format!("Unix timestamp: {} (Date: {})", timestamp, timestamp)
+        },
+        None => "Invalid timestamp".to_string(),
+    }
 }
 
 fn main() -> Result<()> {
@@ -140,12 +153,13 @@ fn main() -> Result<()> {
     // Decode final journal
     let journal_struct = JournalData::abi_decode(&receipt.journal.bytes)?;
 
+    println!("\n=== HYBRID CREDIT SCORE RESULTS ===");
     println!(" Final Hybrid Score: {}", journal_struct.score);
     println!(" TradFi Server: '{}'", journal_struct.serverName);
     println!(" State Root Provider: '{}'", journal_struct.stateRootProvider);
     println!(" Block Number: {}", journal_struct.blockNumber);
-    println!(" User ID: '{}'", journal_struct.userId);
-    println!(" TradFi Date: '{}'", journal_struct.tradfiDate);
+    println!(" User ID Hash: '{}'", journal_struct.userIdHash);
+    println!(" TradFi Date Timestamp: {}", format_timestamp(journal_struct.tradfiDateTimestamp));
     println!(" User Address: '{}'", journal_struct.userAddress);
     println!(" Nullifiers Count: {}", journal_struct.allNullifiers.len());
     if !journal_struct.allNullifiers.is_empty() {
@@ -158,8 +172,8 @@ fn main() -> Result<()> {
         serverName: journal_struct.serverName,
         stateRootProvider: journal_struct.stateRootProvider,
         blockNumber: journal_struct.blockNumber,
-        userId: journal_struct.userId,
-        tradfiDate: journal_struct.tradfiDate,
+        userIdHash: journal_struct.userIdHash,                 
+        tradfiDateTimestamp: journal_struct.tradfiDateTimestamp, 
         userAddress: journal_struct.userAddress,
         allNullifiers: journal_struct.allNullifiers,
     };
@@ -170,7 +184,9 @@ fn main() -> Result<()> {
     let provider = ProviderBuilder::new().wallet(wallet).connect_http(args.rpc_url);
     let contract = ICreditScore::new(args.contract, provider);
 
+    println!("\n=== SUBMITTING TO BLOCKCHAIN ===");
     println!(" About to call submitCreditScore...");
+    println!(" Contract Address: {:?}", args.contract);
     
     let runtime = tokio::runtime::Runtime::new()?;
     let call = contract.submitCreditScore(contract_journal_data, seal.into());
@@ -178,7 +194,10 @@ fn main() -> Result<()> {
     let pending_tx = runtime.block_on(call.send())?;
     let tx_receipt = runtime.block_on(pending_tx.get_receipt())?;
 
-    println!("✅ On-chain TX hash: {:?}", tx_receipt.transaction_hash);
+    println!("✅ Successfully submitted to blockchain!");
+    println!("   TX Hash: {:?}", tx_receipt.transaction_hash);
+    println!("   Block Number: {:?}", tx_receipt.block_number);
+    println!("   Gas Used: {:?}", tx_receipt.gas_used);
 
     Ok(())
 }
