@@ -95,39 +95,21 @@ impl MerkleProofFetcher {
         H256(keccak256(&data))
     }
 
-    /// Calculate storage slots for UserHistory struct fields
-    /// NOTE: This needs to be adjusted to the contract structure for now it assumes following
-    /// user_history strcut from lending.sol contrat that can be found in foundry folder
-    ///contract Lending{
-    // mapping(address => UserHistory) public users;
-    // uint256 history = 2;
-    // struct UserHistory{
-    //   uint256 firstInteractionTimestamp;
-    //   uint256 liquidations;
-    //   uint256 succesfullPayments;
-    //   uint256 curentTotalDept;
-    // }}
-
-    ///
-    pub fn calculate_struct_slots(&self, base_slot: H256) -> [H256; 4] {
+    pub fn calculate_struct_slots(&self, base_slot: H256) -> [H256; 3] {
         let base_u256 = U256::from_big_endian(base_slot.as_bytes());
 
         let slot1 = base_u256 + U256::one();
         let slot2 = base_u256 + U256::from(2);
-        let slot3 = base_u256 + U256::from(3);
 
         let mut slot1_bytes = [0u8; 32];
         let mut slot2_bytes = [0u8; 32];
-        let mut slot3_bytes = [0u8; 32];
         slot1.to_big_endian(&mut slot1_bytes);
         slot2.to_big_endian(&mut slot2_bytes);
-        slot3.to_big_endian(&mut slot3_bytes);
 
         [
             base_slot,               // firstInteractionTimestamp
             H256::from(slot1_bytes), // liquidations
             H256::from(slot2_bytes), // successfulPayments
-            H256::from(slot3_bytes), // total_dept
         ]
     }
 
@@ -155,10 +137,6 @@ impl MerkleProofFetcher {
         let payments = self
             .provider
             .get_storage_at(contract_address, struct_slots[2], Some(block))
-            .await?;
-        let total_dept = self
-            .provider
-            .get_storage_at(contract_address, struct_slots[3], Some(block))
             .await?;
 
         Ok(UserHistory {
@@ -252,7 +230,7 @@ impl MerkleProofFetcher {
     pub async fn fetch_whole_EIP_proof(
         &self,
         contract_address: Address,
-        struct_slots: [H256; 4], // slots of the data for witch merkle proof should be fetched
+        struct_slots: [H256; 3], // slots of the data for witch merkle proof should be fetched
         block: BlockId,
     ) -> Result<EIP1186ProofResponse, Box<dyn std::error::Error>> {
         // let mapping_slot = U256::zero();
