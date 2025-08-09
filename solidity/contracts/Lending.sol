@@ -10,16 +10,14 @@ contract Lending{
     uint256 firstInteractionTimestamp;
     uint256 liquidations;
     uint256 succesfullPayments;
-    uint256 curentTotalDept;
     
   }
 
-    constructor(address userAddress , uint256 firstInteractionTimestamp , uint256 liquidations , uint256 succesfullPayments ,uint256 totalDept) {
+    constructor(address userAddress , uint256 firstInteractionTimestamp , uint256 liquidations , uint256 succesfullPayments ) {
       users[userAddress] = UserHistory({
         firstInteractionTimestamp : firstInteractionTimestamp,
         liquidations : liquidations,
-        succesfullPayments: succesfullPayments,
-        curentTotalDept : totalDept
+        succesfullPayments: succesfullPayments
       });
 
     }

@@ -326,25 +326,21 @@ pub fn calculate_mapping_slot(user_address: &Address, mapping_slot: U256) -> H25
     H256::from(hash)
 }
 
-pub fn calculate_struct_slots(base_slot: H256) -> [H256; 4] {
+pub fn calculate_struct_slots(base_slot: H256) -> [H256; 3] {
     let base_u256 = U256::from_big_endian(base_slot.as_bytes());
 
     let slot1 = base_u256 + U256::one();
     let slot2 = base_u256 + U256::from(2);
-    let slot3 = base_u256 + U256::from(3);
 
     let mut slot1_bytes = [0u8; 32];
     let mut slot2_bytes = [0u8; 32];
-    let mut slot3_bytes = [0u8; 32];
     slot1.to_big_endian(&mut slot1_bytes);
     slot2.to_big_endian(&mut slot2_bytes);
-    slot3.to_big_endian(&mut slot3_bytes);
 
     [
         base_slot,               // firstInteractionTimestamp
         H256::from(slot1_bytes), // liquidations
         H256::from(slot2_bytes), // successfulPayments
-        H256::from(slot3_bytes), // total_dept
     ]
 }
 pub fn verify_all_storage_proofs(
