@@ -1,3 +1,23 @@
+# Solidity Smart Contracts
+
+Smart contracts for RISC Zero proof verification and credit score management on Ethereum.
+
+## Directory Structure
+```text
+├── contracts/
+│   ├── risc0/                    # RISC Zero verification contracts
+│   │   ├── ImageID.sol           # Circuit binding for zkVM image verification
+│   │   └── ...                   # Other R0 verification utilities
+│   ├── CreditScore.sol           # Main contract for score proof upload and management
+│   └── Lending.sol               # Mock lending contract for testing integrations
+├── deploy/
+│   └── Deploy.s.sol              # Deployment scripts
+├── test/
+│   └── NullifierTest.sol         # Tests for nullifier handling logic
+└── lib/                          # Dependencies (installed as git submodules)
+```
+
+
 ## Install required Libs 
 ```shell
 git submodule add https://github.com/OpenZeppelin/openzeppelin-contracts
