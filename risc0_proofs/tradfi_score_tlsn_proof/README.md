@@ -9,7 +9,7 @@ Verify TLSNotary proofs of HTTPS session integrity inside the RISC0 zkVM to vali
 └── methods/guest/  # zkVM guest code with TLSN proof verification logic
 ```
 ### Decoded TLSN Proof Structure
-The TLSN proof contains a verified JSON-RPC response from a blockchain RPC endpoint. Example of the decoded data structure:
+The TLSN proof contains a verified JSON response from a mock banking/credit bureau API. Example of the decoded data structure:
 ```json
 {
   "data": {
