@@ -40,7 +40,6 @@ pub struct DefiProofOutput {
     pub first_interaction_timestamp: U256,
     pub liquidations: U256,
     pub on_time_payments: U256,
-    pub current_debt: U256,
     pub trusted_state_root: H256,
 }
 

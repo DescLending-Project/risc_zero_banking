@@ -64,7 +64,7 @@ fn main() {
         &contract.storage_root,
         &user_address,
     );
-    assert!(user_history_data.len() == 4, "User Histor data mismatch");
+    assert!(user_history_data.len() == 3, "User Histor data mismatch");
 
     now = env::cycle_count();
     eprintln!("{}: verify_all_storage_proofs", now - last);
@@ -99,7 +99,6 @@ fn main() {
         first_interaction_timestamp: user_history_data[0],
         liquidations: user_history_data[1],
         on_time_payments: user_history_data[2],
-        current_debt: user_history_data[3],
         trusted_state_root,
     };
 
