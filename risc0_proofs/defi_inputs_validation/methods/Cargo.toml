@@ -5,7 +5,7 @@ edition = "2021"
 
 
 [build-dependencies]
-risc0-build = { version = "2.1.0", default-features = false, features = ['unstable'] }
+risc0-build = { version = "2.3.1",  features = ['unstable'] }
 
 
 [package.metadata.risc0]
