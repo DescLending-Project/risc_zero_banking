@@ -8,10 +8,10 @@ A privacy-preserving hybrid credit scoring system built with RISC Zero that comb
 
 The system consists of four main components:
 
-- **Inner Proofs**: Individual proofs for different credit factors (fetched TradFi score, DeFi activity assesment and fetched stateroot, for data integrity verification)
-- **Outer Proof**: Aggregated proof that verifies all inner proofs and calculates the final credit score
-- **Smart Contracts**: On-chain verification and score publishing infrastructure
-- **Custom Libraries**: Shared utilities 
+- **[Inner Proofs](./risc0_proofs/)**: Individual proofs for different credit factors (fetched TradFi score, DeFi activity assessment and fetched stateroot, for data integrity verification)
+- **[Outer Proof](./score_publisher/)**: Aggregated proof that verifies all inner proofs and calculates the final credit score
+- **[Smart Contracts](./solidity/)**: On-chain verification and score publishing infrastructure
+- **[Custom Libraries](./lib/)**: Shared utilities
 
 ## Directory Structure
 ```text
@@ -20,3 +20,14 @@ The system consists of four main components:
 ├── score_publisher/       # Integrated scoring system with nested proof verification and on-chain publishing
 └── solidity/              # Smart contracts for verification and credit score management
 ```
+## Hybrid Credit Score Components
+
+![Credit Score Components](./score_components.png)
+
+The system calculates a weighted composite credit score (300-850 range) using:
+
+- **Payment History (30%)** - DeFi lending reliability and on-time payments
+- **Credit Utilization (30%)** - Current debt vs available credit limits
+- **TradFi Score (15%)** - Traditional financial credit score integration fetched from a banking API
+- **Credit History (15%)** - Length of DeFi platform interaction history
+- **Trust Score (10%)** - Data verification level and proof authenticity (100% here as everything is done in zkVM (compared to alternative aproaches))
