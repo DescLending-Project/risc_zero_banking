@@ -22,7 +22,7 @@ The system consists of four main components:
 ```
 ## Hybrid Credit Score Components
 
-![Credit Score Components](./score_components.png)
+<img src="./score_components.png" alt="Credit Score Components" width="350">
 
 The system calculates a weighted composite credit score (300-850 range) using:
 
