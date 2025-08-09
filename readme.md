@@ -14,8 +14,9 @@ The system consists of four main components:
 - **Custom Libraries**: Shared utilities 
 
 ## Directory Structure
-
+'''
 ├── lib/                   # Custom libraries and utilities
 ├── risc0_proofs/          # Standalone RISC Zero proof implementation
 ├── score_publisher/       # Integrated scoring system with nested proof verification and on-chain publishing
 └── solidity/              # Smart contracts for verification and credit score management
+'''
