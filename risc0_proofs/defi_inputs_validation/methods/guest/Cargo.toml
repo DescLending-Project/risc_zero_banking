@@ -6,7 +6,7 @@ edition = "2021"
 [workspace]
 
 [dependencies]
-risc0-zkvm = { version = "2.1.0", default-features = false, features = ['std','unstable'] }
+risc0-zkvm = { version = "2.3.1",  features = ['std','unstable'] }
 merkle_verifier_core = { path = "../../../../lib/core/merkle_verifier_core/",default-features = false }
 signature_verifier_core = { path = "../../../../lib/core/signature_verifier_core/",default-features = false }
 nullifier_verifier_core = { path = "../../../../lib/core/nullifier_verifier_core/",default-features = false }
