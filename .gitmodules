@@ -4,6 +4,3 @@
 [submodule "score_publisher/lib/openzeppelin-contracts"]
 	path = score_publisher/lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
-[submodule "score_publisher/lib/forge-std"]
-	path = score_publisher/lib/forge-std
-	url = https://github.com/foundry-rs/forge-std

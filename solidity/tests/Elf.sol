@@ -20,5 +20,5 @@ pragma solidity ^0.8.20;
 
 library Elf {
     string public constant GUEST_PATH =
-        "/Users/timwhooks/dev/projects/risc_zero_banking/score_publisher/target/riscv-guest/methods/guest/riscv32im-risc0-zkvm-elf/release/guest.bin";
+        "/Users/timwhooks/risc_zero_banking/score_publisher/target/riscv-guest/methods/guest/riscv32im-risc0-zkvm-elf/release/guest.bin";
 }
