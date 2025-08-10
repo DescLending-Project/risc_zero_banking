@@ -20,14 +20,10 @@ Smart contracts for RISC Zero proof verification and credit score management on 
 
 ## Install required Libs 
 ```shell
-git submodule add https://github.com/OpenZeppelin/openzeppelin-contracts
-lib/openzeppelin-contracts
-
-git submodule add https://github.com/foundry-rs/forge-std
-lib/forge-std
-
-git submodule add https://github.com/risc0/risc0-ethereum
-lib/risc0-ethereum
+cd solidity/lib
+forge install risc0/risc0-ethereum
+forge install OpenZeppelin/openzeppelin-contracts
+forge install foundry-rs/forge-std
 ```
 ## Deploy with Foundry
 First, start Anvil in a separte Shell to get the env vars
