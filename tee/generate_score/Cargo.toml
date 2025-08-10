@@ -1,0 +1,19 @@
+[package]
+name = "generate_score"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+merkle_verifier_core = { path = "../../lib/core/merkle_verifier_core/",default-features = false }
+signature_verifier_core = { path = "../../lib/core/signature_verifier_core/",default-features = false }
+nullifier_verifier_core = { path = "../../lib/core/nullifier_verifier_core/",default-features = false }
+fetch_merkle = { path = "../../lib/core/fetch_merkle/",default-features = false }
+score_calculation = { path = "../../lib/core/score_calculation/"}
+eth_utils = { path = "../../lib/core/eth_utils"}
+ethers = { version = "2.0", features = ["ws", "rustls"] }
+tokio = { version = "1.28", features = ["full"] }
+anyhow = {version = "1.0"}
+serde = { version = "1.0", features = ["derive"] }
+ethereum-types = "0.14"
+serde_arrays = "0.1"
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
