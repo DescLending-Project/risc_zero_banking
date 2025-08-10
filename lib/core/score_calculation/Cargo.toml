@@ -7,6 +7,7 @@ description = "FICO-inspired credit scoring system for decentralized finance"
 [dependencies]
 # Serialization support for RISC Zero
 serde = { version = "1.0", features = ["derive"] }
+ethereum-types = "0.14"
 
 
 [dev-dependencies]
