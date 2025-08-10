@@ -367,7 +367,7 @@ pub fn verify_all_storage_proofs(
 
         let value = match verify_storage_proof(proof.state_root, &proof.key, &proof.storage_proof) {
             Ok(Some(val)) => val,
-            Ok(None) => panic!("Storage proof verification failed - no return data"),
+            Ok(None) => U256::from(0),
             Err(e) => panic!(
                 "Storage proof verification error : {:?} \n for the proof {:?}",
                 e, proof
