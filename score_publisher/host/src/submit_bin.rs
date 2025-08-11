@@ -8,10 +8,8 @@ use alloy_sol_types::{SolValue, sol};
 use anyhow::Result;
 use clap::Parser;
 use std::{fs::File, io::Read};
-use serde::{Deserialize, Serialize};
-use methods::GUEST_ELF;
 use risc0_ethereum_contracts::encode_seal;
-use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, Receipt, ReceiptKind};
+use risc0_zkvm::Receipt;
 use url::Url;
 
 sol! {
@@ -70,44 +68,24 @@ struct Args {
     contract: AlloyAddress,
 
     #[clap(long)]
-    tradfi_receipt_path: String,
+    proof_path: String,
+}
+
+fn load_existing_receipt(receipt_path: &str) -> Result<Receipt> {
+    println!("Loading existing proof from: {}", receipt_path);
     
-    #[clap(long)]
-    account_receipt_path: String,
+    let mut file = File::open(receipt_path)
+        .map_err(|e| anyhow::anyhow!("Failed to open proof file '{}': {}", receipt_path, e))?;
     
-    #[clap(long)]
-    stateroot_receipt_path: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct VerificationOutput {
-    is_valid: bool,
-    server_name: String,
-    score: Option<u64>,
-    user_id_hash: Option<String>, 
-    tradfi_date_timestamp: Option<u64>, 
-    error: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct StateRootOutput {
-    is_valid: bool,
-    server_name: String,
-    state_root: Option<String>,
-    block_number: Option<String>,
-    error: Option<String>,
-}
-
-fn load_receipt(receipt_path: &str) -> Result<(Receipt, Vec<u8>)> {
-    let mut file = File::open(receipt_path)?;
     let mut receipt_bytes = Vec::new();
-    file.read_to_end(&mut receipt_bytes)?;
+    file.read_to_end(&mut receipt_bytes)
+        .map_err(|e| anyhow::anyhow!("Failed to read proof file: {}", e))?;
     
     let receipt: Receipt = bincode::deserialize(&receipt_bytes)
         .map_err(|e| anyhow::anyhow!("Failed to deserialize receipt: {}", e))?;
 
-    let journal_bytes = receipt.journal.bytes.clone();
-    Ok((receipt, journal_bytes))
+    println!("✅ Successfully loaded existing proof!");
+    Ok(receipt)
 }
 
 // Helper function to format timestamp for display
@@ -125,32 +103,14 @@ fn format_timestamp(timestamp: u64) -> String {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Load all inner receipts
-    let (tradfi_receipt, tradfi_journal_bytes) = load_receipt(&args.tradfi_receipt_path)?;
-    let (defi_receipt, defi_journal_bytes) = load_receipt(&args.account_receipt_path)?;
-    let (stateroot_receipt, stateroot_journal_bytes) = load_receipt(&args.stateroot_receipt_path)?;
+    // Load the existing proof
+    let receipt = load_existing_receipt(&args.proof_path)?;
 
-    let env = ExecutorEnv::builder()
-        .add_assumption(tradfi_receipt)
-        .add_assumption(defi_receipt)
-        .add_assumption(stateroot_receipt)
-        .write(&tradfi_journal_bytes)?
-        .write(&defi_journal_bytes)?
-        .write(&stateroot_journal_bytes)?
-        .build()?;
+    // Decode the journal to see what we're submitting
+    let journal_struct = JournalData::abi_decode(&receipt.journal.bytes)
+        .map_err(|e| anyhow::anyhow!("Failed to decode journal: {}", e))?;
 
-    println!("Starting proof generation...");
-    
-    let opts = ProverOpts::default().with_receipt_kind(ReceiptKind::Groth16);
-    let prove_info = default_prover().prove_with_opts(env, GUEST_ELF, &opts)?;
-    let receipt = prove_info.receipt;
-    let receipt_bytes = bincode::serialize(&receipt)?;
-    std::fs::write("hybrid_credit_score_receipt.bin", receipt_bytes)?;
-
-    // Decode final journal
-    let journal_struct = JournalData::abi_decode(&receipt.journal.bytes)?;
-
-    println!("\n=== HYBRID CREDIT SCORE RESULTS ===");
+    println!("\n=== PROOF CONTENTS ===");
     println!(" Final Hybrid Score: {}", journal_struct.score);
     println!(" TradFi Server: '{}'", journal_struct.serverName);
     println!(" State Root Provider: '{}'", journal_struct.stateRootProvider);
@@ -175,8 +135,11 @@ fn main() -> Result<()> {
         allNullifiers: journal_struct.allNullifiers,
     };
 
-    // Submit to contract
-    let seal = encode_seal(&receipt)?;
+    // Encode the seal for submission
+    let seal = encode_seal(&receipt)
+        .map_err(|e| anyhow::anyhow!("Failed to encode seal: {}", e))?;
+
+    // Setup blockchain connection
     let wallet = EthereumWallet::from(args.eth_wallet_private_key);
     let provider = ProviderBuilder::new().wallet(wallet).connect_http(args.rpc_url);
     let contract = ICreditScore::new(args.contract, provider);
@@ -184,17 +147,24 @@ fn main() -> Result<()> {
     println!("\n=== SUBMITTING TO BLOCKCHAIN ===");
     println!(" About to call submitR0CreditScore...");
     println!(" Contract Address: {:?}", args.contract);
+    println!(" Chain ID: {}", args.chain_id);
     
     let runtime = tokio::runtime::Runtime::new()?;
     let call = contract.submitR0CreditScore(contract_journal_data, seal.into());
     
-    let pending_tx = runtime.block_on(call.send())?;
-    let tx_receipt = runtime.block_on(pending_tx.get_receipt())?;
+    println!(" Sending transaction...");
+    let pending_tx = runtime.block_on(call.send())
+        .map_err(|e| anyhow::anyhow!("Failed to send transaction: {}", e))?;
+    
+    println!(" Waiting for confirmation...");
+    let tx_receipt = runtime.block_on(pending_tx.get_receipt())
+        .map_err(|e| anyhow::anyhow!("Failed to get transaction receipt: {}", e))?;
 
     println!("✅ Successfully submitted to blockchain!");
     println!("   TX Hash: {:?}", tx_receipt.transaction_hash);
     println!("   Block Number: {:?}", tx_receipt.block_number);
     println!("   Gas Used: {:?}", tx_receipt.gas_used);
+    println!("   Status: {:?}", if tx_receipt.status() { "Success" } else { "Failed" });
 
     Ok(())
 }
