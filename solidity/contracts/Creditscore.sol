@@ -14,7 +14,7 @@ contract CreditScore {
     mapping(string => bool) public authorizedStateRootProviders;
     mapping(address => CreditScoreData) public creditScores;
     mapping(bytes32 => bool) public usedAccountsNullifiers;
-    mapping(string => bytes32) public tradifyNullifiers; // mapping from tradify score Nullifier to its owner ETH accounts nullifier
+    mapping(bytes32 => bytes32) public tradfiNullifiers; // mapping from tradify score Nullifier to its owner ETH accounts nullifier
 
     struct CreditScoreData {
         uint64 score;
@@ -28,9 +28,9 @@ contract CreditScore {
         string serverName;
         string stateRootProvider;
         uint64 blockNumber;
-        string tradifyNullifier; // NOTE: 1.Lets just call this tradifyNullifier 2. how long is this string? Switching to bytes32 would be nice
+        bytes32 tradfiNullifier; 
         uint64 tradfiDateTimestamp;
-        address userAddress; // NOTE: this should be an ETH address  instead of string
+        address userAddress; 
         bytes32[] allNullifiers;
     }
 
@@ -38,7 +38,7 @@ contract CreditScore {
         address indexed user,
         uint64 score,
         uint256 timestamp,
-        string tradifyNullifier
+        bytes32 tradfiNullifier
     );
 
     constructor(IRiscZeroVerifier _verifier) {
@@ -46,7 +46,7 @@ contract CreditScore {
         authorizedServers[
             "openbanking-api-826260723607.europe-west3.run.app"
         ] = true;
-        authorizedStateRootProviders["sonic-blaze.g.alchemy.com"] = true;
+        authorizedStateRootProviders["supertrusworthynodeprovider.jermatek.com"] = true;
     }
 
     // Validates the content of credit Score journalData
@@ -64,26 +64,22 @@ contract CreditScore {
             authorizedStateRootProviders[journalData.stateRootProvider],
             "State root provider not authorized"
         );
-
-        require(
-            journalData.blockNumber >= block.number, // has to be adjusted in real production, shall just pass for now
-            "State root data is too old"
-        );
+/*
         require(
             block.timestamp - journalData.tradfiDateTimestamp <=
                 TRADIFY_DATA_MAX_AGE,
             " Tradify data is to old"
         );
-
+*//*
         require(
             block.number - journalData.blockNumber <= BLCOKCHAIN_DATA_MAX_AGE,
             "Blockchain data is to old"
         );
-
+*/
         deleteOldNullifiers(journalData.userAddress);
         addNewNullifiers(
             journalData.allNullifiers,
-            journalData.tradifyNullifier,
+            journalData.tradfiNullifier,
             journalData.userAddress
         );
     }
@@ -108,12 +104,12 @@ contract CreditScore {
             msg.sender,
             journalData.score,
             block.timestamp,
-            journalData.tradifyNullifier
+            journalData.tradfiNullifier
         );
     }
 
-    // NOTE: we might have to change the name of this method to submitR0CreditScore
-    function submitCreditScore(
+   
+    function submitR0CreditScore(
         JournalData calldata journalData,
         bytes calldata seal
     ) external {
@@ -136,7 +132,7 @@ contract CreditScore {
             msg.sender,
             journalData.score,
             block.timestamp,
-            journalData.tradifyNullifier
+            journalData.tradfiNullifier
         );
     }
 
@@ -156,18 +152,18 @@ contract CreditScore {
 
     function addNewNullifiers(
         bytes32[] calldata userOwnedAccountsNullifiers,
-        string calldata userTradifyNullifier,
+        bytes32 usertradfiNullifier,
         address lenderAddress
     ) internal {
         require(
-            tradifyNullifiers[userTradifyNullifier] == bytes32(0) ||
-                tradifyNullifiers[userTradifyNullifier] ==
+            tradfiNullifiers[usertradfiNullifier] == bytes32(0) ||
+                tradfiNullifiers[usertradfiNullifier] ==
                 userOwnedAccountsNullifiers[0],
             "User tries to use not his tradify score."
         );
 
-        // storing the userTradifyNullifier in relation to his lending acount nullifier
-        tradifyNullifiers[userTradifyNullifier] = userOwnedAccountsNullifiers[
+        // storing the usertradfiNullifier in relation to his lending acount nullifier
+        tradfiNullifiers[usertradfiNullifier] = userOwnedAccountsNullifiers[
             0
         ];
 

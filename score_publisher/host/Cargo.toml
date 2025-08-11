@@ -3,8 +3,13 @@ name = "host"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "submit_bin"
+path = "src/submit_bin.rs"
 
-
+[[bin]]
+name = "extract_imageid"
+path = "src/extract_imageId.rs"
 
 [dependencies]
 methods = { workspace = true }
