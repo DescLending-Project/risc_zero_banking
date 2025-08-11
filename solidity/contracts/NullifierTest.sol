@@ -37,15 +37,18 @@ contract NullifierTest is Test {
     function createJournalData(
         address userAddress,
         bytes32[] memory nullifiers,
-        string memory tradifyNullifier
+        string memory tradfiNullifierString
     ) internal view returns (CreditScore.JournalData memory) {
+        // Convert string to bytes32 using keccak256 (matching your Rust implementation)
+        bytes32 tradfiNullifier = keccak256(abi.encodePacked(tradfiNullifierString));
+        
         return
             CreditScore.JournalData({
                 score: 750,
                 serverName: "openbanking-api-826260723607.europe-west3.run.app",
                 stateRootProvider: "sonic-blaze.g.alchemy.com",
                 blockNumber: uint64(block.number),
-                tradifyNullifier: tradifyNullifier,
+                tradfiNullifier: tradfiNullifier,  // Now bytes32 instead of string
                 tradfiDateTimestamp: uint64(block.timestamp),
                 userAddress: userAddress,
                 allNullifiers: nullifiers
@@ -74,8 +77,9 @@ contract NullifierTest is Test {
         );
 
         // Verify tradify mapping
+        bytes32 expectedTradfiNullifier = keccak256(abi.encodePacked("tradify1"));
         assertEq(
-            creditContract.tradifyNullifiers("tradify1"),
+            creditContract.tradfiNullifiers(expectedTradfiNullifier),
             LENDER_NULLIFIER,
             "Tradify nullifier should map to lender nullifier"
         );
@@ -350,7 +354,7 @@ contract NullifierTest is Test {
     }
 
     function testDeleteNullifiers_NoExistingScore() public {
-        // Try to submit for user with no existing score (should fail in deleteOldNullifiers)
+        // Try to submit for user with no existing score (should succeed)
         bytes32[] memory nullifiers = new bytes32[](1);
         nullifiers[0] = LENDER_NULLIFIER;
 
@@ -420,7 +424,7 @@ contract NullifierTest is Test {
         );
     }
 
-    function testSameTradifyNullifier_SameUser() public {
+    function testSameTradfiNullifier_SameUser() public {
         // Initial submission
         bytes32[] memory nullifiers1 = new bytes32[](1);
         nullifiers1[0] = LENDER_NULLIFIER;
@@ -457,8 +461,10 @@ contract NullifierTest is Test {
             creditContract.usedAccountsNullifiers(OWNED_NULLIFIER_1),
             "New owned account should be used"
         );
+        
+        bytes32 expectedTradfiNullifier = keccak256(abi.encodePacked("tradify1"));
         assertEq(
-            creditContract.tradifyNullifiers("tradify1"),
+            creditContract.tradfiNullifiers(expectedTradfiNullifier),
             LENDER_NULLIFIER,
             "Tradify mapping should remain unchanged"
         );
@@ -539,13 +545,16 @@ contract NullifierTest is Test {
         );
 
         // Verify tradify mappings
+        bytes32 expectedTradfi1 = keccak256(abi.encodePacked("tradify1"));
+        bytes32 expectedTradfi2 = keccak256(abi.encodePacked("tradify2"));
+        
         assertEq(
-            creditContract.tradifyNullifiers("tradify1"),
+            creditContract.tradfiNullifiers(expectedTradfi1),
             LENDER_NULLIFIER,
             "USER1 tradify mapping"
         );
         assertEq(
-            creditContract.tradifyNullifiers("tradify2"),
+            creditContract.tradfiNullifiers(expectedTradfi2),
             OWNED_NULLIFIER_2,
             "USER2 tradify mapping"
         );
