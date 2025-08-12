@@ -11,7 +11,7 @@ The system consists of four main components:
 - **[Inner Proofs](./risc0_proofs/)**: Individual proofs for different credit factors (fetched TradFi score, DeFi activity assessment and fetched stateroot, for data integrity verification)
 - **[Outer Proof](./score_publisher/)**: Aggregated proof that verifies all inner proofs and calculates the final credit score
 - **[Smart Contracts](./solidity/)**: On-chain verification and score publishing infrastructure
-- **[Custom Libraries](./lib/)**: Shared utilities
+- **[Custom Libraries](./lib/)**: Shared utilities for zkVM
 
 ## Directory Structure
 ```text
@@ -27,7 +27,7 @@ The system consists of four main components:
 The system calculates a weighted composite credit score (300-850 range) using:
 
 - **Payment History (30%)** - DeFi lending reliability and on-time payments
-- **Credit Utilization (30%)** - Current debt vs available credit limits
+- **Credit Utilization (30%)** - Available credit limits
 - **TradFi Score (15%)** - Traditional financial credit score integration fetched from a banking API
 - **Credit History (15%)** - Length of DeFi platform interaction history
 - **Trust Score (10%)** - Data verification level and proof authenticity (100% here as everything is done in zkVM (compared to alternative aproaches))
