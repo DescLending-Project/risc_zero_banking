@@ -1,0 +1,19 @@
+services:
+  tlsn-verifier:
+    container_name: tlsn-verifier
+    image: docker.io/rbbozkurt/tlsn-verifier:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/tappd.sock:/var/run/tappd.sock
+      - /var/run/dstack.sock:/var/run/dstack.sock
+    platform: linux/amd64
+    environment:
+      - TLSN_VERIFIER_API_KEY
+      - GRANT_SUDO=yes
+      - TLSN_VERIFIER_HOST=0.0.0.0
+      - TLSN_VERIFIER_PORT=8080
+      - TLSN_VERIFIER_ACCEPTED_SERVER_NAMES=openbanking-api-826260723607.europe-west3.run.app
+      - TLSN_VERIFIER_ACCEPTED_VERSION=0.1.0-alpha.10
+
+# Try with GRANT_SUDO=yes to avoid permission issues with /var/run/dstack.sock

@@ -1,0 +1,12 @@
+services:
+  tlsn-verifier:
+    container_name: tlsn-verifier
+    image: docker.io/rbbozkurt/tlsn-verifier:latest # This image will be updated by the GitHub Actions workflow
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    platform: linux/amd64
