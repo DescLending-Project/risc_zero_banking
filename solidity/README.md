@@ -22,6 +22,10 @@ Smart contracts for RISC Zero proof verification and credit score management on 
 ```shell
 git submodule update --init --recursive
 ```
+or
+```shell
+forge build
+```
 ## Deploy with Foundry
 First, start Anvil in a separte Shell to get the env vars
 ```shell
