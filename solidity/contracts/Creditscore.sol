@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.20;
 
-import {IRiscZeroVerifier} from "risc0/IRiscZeroVerifier.sol";
+import {IRiscZeroVerifier} from "./risc0/IRiscZeroVerifier.sol";
 import {ImageID} from "./risc0/ImageID.sol";
+import {PhalaAttestationVerifier} from "./PhalaAttestationVerifier.sol";
 
 contract CreditScore {
     IRiscZeroVerifier public immutable verifier;
@@ -28,9 +29,9 @@ contract CreditScore {
         string serverName;
         string stateRootProvider;
         uint64 blockNumber;
-        bytes32 tradfiNullifier; 
+        bytes32 tradfiNullifier;
         uint64 tradfiDateTimestamp;
-        address userAddress; 
+        address userAddress;
         bytes32[] allNullifiers;
     }
 
@@ -46,7 +47,9 @@ contract CreditScore {
         authorizedServers[
             "openbanking-api-826260723607.europe-west3.run.app"
         ] = true;
-        authorizedStateRootProviders["supertrusworthynodeprovider.jermatek.com"] = true;
+        authorizedStateRootProviders[
+            "supertrusworthynodeprovider.jermatek.com"
+        ] = true;
     }
 
     // Validates the content of credit Score journalData
@@ -64,13 +67,13 @@ contract CreditScore {
             authorizedStateRootProviders[journalData.stateRootProvider],
             "State root provider not authorized"
         );
-/*
+        /*
         require(
             block.timestamp - journalData.tradfiDateTimestamp <=
                 TRADIFY_DATA_MAX_AGE,
             " Tradify data is to old"
         );
-*//*
+*/ /*
         require(
             block.number - journalData.blockNumber <= BLCOKCHAIN_DATA_MAX_AGE,
             "Blockchain data is to old"
@@ -88,8 +91,10 @@ contract CreditScore {
         JournalData calldata journalData,
         bytes calldata attestation
     ) external {
-        // TODO: add the attestation verificcation call
         require(attestation.length > 0, "Attestation needs to be provided");
+
+        // TODO: add the attestation verificcation call
+        //PhalaAttestationVerifier.verifyAttestationAndExtractReportData(attestation);
 
         validateCreditScoreData(journalData);
         // Store the credit score
@@ -108,7 +113,6 @@ contract CreditScore {
         );
     }
 
-   
     function submitR0CreditScore(
         JournalData calldata journalData,
         bytes calldata seal
@@ -163,9 +167,7 @@ contract CreditScore {
         );
 
         // storing the usertradfiNullifier in relation to his lending acount nullifier
-        tradfiNullifiers[usertradfiNullifier] = userOwnedAccountsNullifiers[
-            0
-        ];
+        tradfiNullifiers[usertradfiNullifier] = userOwnedAccountsNullifiers[0];
 
         // verifying that the users ethAccount was not used for calculation of creditScore for some other ethAccount
         if (usedAccountsNullifiers[userOwnedAccountsNullifiers[0]]) {
