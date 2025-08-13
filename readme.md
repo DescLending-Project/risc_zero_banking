@@ -19,6 +19,7 @@ The system consists of four main components:
 ├── risc0_proofs/          # Standalone RISC Zero proof implementation
 ├── score_publisher/       # Integrated scoring system with nested proof verification and on-chain publishing
 └── solidity/              # Smart contracts for verification and credit score management
+└── tee/                   # Score calculation for tee environment (without risc zero)
 ```
 ## Hybrid Credit Score Components
 
