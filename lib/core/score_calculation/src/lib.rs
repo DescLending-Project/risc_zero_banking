@@ -231,7 +231,7 @@ fn calculate_tradify_integration_score(input: &CreditInput) -> u16 {
             // Clamp to valid range if somehow invalid
             score.min(850).max(300)
         }
-        None => 650, // Neutral score if no off-chain data provided
+        None => 0, // zero score if no off-chain data provided
     }
 }
 
