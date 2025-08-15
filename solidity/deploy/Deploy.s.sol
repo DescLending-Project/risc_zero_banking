@@ -71,10 +71,18 @@ contract CreditScoreDeploy is Script, RiscZeroCheats {
         address userAddress = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
         Lending lending = new Lending(userAddress, 1,2,3);
         console2.log("Lending contract deployed at", address(lending));
+        string[] memory servers = new string[](1);
+        servers[0] = "openbanking-api-826260723607.europe-west3.run.app";
+        string[] memory providers = new string[](1);
+        providers[0] = "supertrusworthynodeprovider.jermatek.com";
 
         // Deploy the CreditScore contract.
-        CreditScore creditScore = new CreditScore(verifier);
+        address lending_contract_addr = vm.envOr("LENDING_CONTRACT_ADDRESS", address(lending));
+        address timelock_addr = vm.envOr("TIMELOCK_ADDRESS", address(lending));
+        CreditScore creditScore = new CreditScore(verifier, lending_contract_addr,timelock_addr,servers,providers);
         console2.log("Deployed CreditScore contract to", address(creditScore));
+        console2.log("Used lending_contract_addr", lending_contract_addr);
+        console2.log("Used timelock_addr", timelock_addr);
         console2.log("ImageID constant:", uint256(creditScore.imageId()));
 
         vm.stopBroadcast();
