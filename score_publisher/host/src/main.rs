@@ -21,6 +21,7 @@ sol! {
         bytes32 tradfiNullifier;
         uint64 tradfiDateTimestamp;
         address userAddress;
+        address contractAddress;
         bytes32[] allNullifiers;
     }
 }
@@ -37,6 +38,7 @@ pub mod credit_score_abi {
                 bytes32 tradfiNullifier;
                 uint64 tradfiDateTimestamp;
                 address userAddress;
+                address contractAddress;
                 bytes32[] allNullifiers;
             }
 
@@ -169,6 +171,7 @@ fn main() -> Result<()> {
         format_timestamp(journal_struct.tradfiDateTimestamp)
     );
     println!(" User Address: {:?}", journal_struct.userAddress);
+    println!(" Contract Address: {:?}", journal_struct.contractAddress);
     println!(" Nullifiers Count: {}", journal_struct.allNullifiers.len());
     if !journal_struct.allNullifiers.is_empty() {
         println!(
@@ -186,6 +189,7 @@ fn main() -> Result<()> {
         tradfiNullifier: journal_struct.tradfiNullifier,
         tradfiDateTimestamp: journal_struct.tradfiDateTimestamp,
         userAddress: journal_struct.userAddress,
+        contractAddress: journal_struct.contractAddress,
         allNullifiers: journal_struct.allNullifiers,
     };
 
@@ -214,4 +218,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-
