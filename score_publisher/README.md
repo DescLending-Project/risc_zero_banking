@@ -54,7 +54,7 @@ struct JournalData {
 ```bash
 RISC0_USE_DOCKER=1 cargo build --release
 ```
-# Run
+# Run locally with Anvil
 
 Before running the publisher, ensure you have **deployed the required smart contracts** located in the [`Solidity/`](../solidity) directory.
 Note: Make sure your local Ethereum node (e.g., Hardhat or Anvil) is running and that the contract address and private key are correct.
@@ -97,4 +97,24 @@ You can extract ImageIDs from the receipts:
 ```bash
 cargo run -p host --bin extract_imageid --release -- host/receipts/alchemy_stateroot.bin
 ```
+# Submit Proof of Credit Score to our Sepolia contract
 
+You can also submit your proof to our Sepolia deployed contract: https://sepolia.etherscan.io/address/0xaa76acf6a50f94756eb451ee3c519432f527d59c
+
+Export your Sepolia wallet private key and Alchemy (Sepolia) API key:
+```shell
+export ETH_WALLET_PRIVATE_KEY=""
+export ALCHEMY_API_KEY=""
+```
+Then run:
+
+```bash
+RISC0_USE_DOCKER=1 cargo run -p host --bin host --release -- \
+  --tradfi-receipt-path host/receipts/tradfi_score.bin \
+  --account-receipt-path host/receipts/valid_defi_inputs_receipt.bin \
+  --stateroot-receipt-path host/receipts/alchemy_stateroot.bin \
+  --chain-id 11155111 \
+  --rpc-url https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY:?} \
+  --contract 0xaa76ACf6a50f94756eB451Ee3c519432f527d59C \
+  --eth-wallet-private-key ${ETH_WALLET_PRIVATE_KEY:?}
+```
