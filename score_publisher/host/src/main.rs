@@ -1,27 +1,25 @@
 use alloy::{
-    network::EthereumWallet,
-    providers::ProviderBuilder,
-    signers::local::PrivateKeySigner,
+    network::EthereumWallet, providers::ProviderBuilder, signers::local::PrivateKeySigner,
 };
-use alloy_primitives::{Address as AlloyAddress};
-use alloy_sol_types::{SolValue, sol};
+use alloy_primitives::Address as AlloyAddress;
+use alloy_sol_types::{sol, SolValue};
 use anyhow::Result;
 use clap::Parser;
-use std::{fs::File, io::Read};
-use serde::{Deserialize, Serialize};
 use methods::GUEST_ELF;
 use risc0_ethereum_contracts::encode_seal;
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, Receipt, ReceiptKind};
+use serde::{Deserialize, Serialize};
+use std::{fs::File, io::Read, time::Instant};
 use url::Url;
 
 sol! {
     struct JournalData {
         uint64 score;
         string serverName;
-        string stateRootProvider; 
+        string stateRootProvider;
         uint64 blockNumber;
-        bytes32 tradfiNullifier;           
-        uint64 tradfiDateTimestamp; 
+        bytes32 tradfiNullifier;
+        uint64 tradfiDateTimestamp;
         address userAddress;
         bytes32[] allNullifiers;
     }
@@ -36,14 +34,14 @@ pub mod credit_score_abi {
                 string serverName;
                 string stateRootProvider;
                 uint64 blockNumber;
-                bytes32 tradfiNullifier;           
-                uint64 tradfiDateTimestamp;  
+                bytes32 tradfiNullifier;
+                uint64 tradfiDateTimestamp;
                 address userAddress;
                 bytes32[] allNullifiers;
             }
-            
+
             function submitR0CreditScore(JournalData calldata journalData, bytes calldata seal) external;
-            
+
             function getCreditScore(address user) external view returns (
                 uint64 score,
                 bool isUnused,
@@ -71,10 +69,10 @@ struct Args {
 
     #[clap(long)]
     tradfi_receipt_path: String,
-    
+
     #[clap(long)]
     account_receipt_path: String,
-    
+
     #[clap(long)]
     stateroot_receipt_path: String,
 }
@@ -84,8 +82,8 @@ struct VerificationOutput {
     is_valid: bool,
     server_name: String,
     score: Option<u64>,
-    user_id_hash: Option<String>, 
-    tradfi_date_timestamp: Option<u64>, 
+    user_id_hash: Option<String>,
+    tradfi_date_timestamp: Option<u64>,
     error: Option<String>,
 }
 
@@ -102,7 +100,7 @@ fn load_receipt(receipt_path: &str) -> Result<(Receipt, Vec<u8>)> {
     let mut file = File::open(receipt_path)?;
     let mut receipt_bytes = Vec::new();
     file.read_to_end(&mut receipt_bytes)?;
-    
+
     let receipt: Receipt = bincode::deserialize(&receipt_bytes)
         .map_err(|e| anyhow::anyhow!("Failed to deserialize receipt: {}", e))?;
 
@@ -112,12 +110,12 @@ fn load_receipt(receipt_path: &str) -> Result<(Receipt, Vec<u8>)> {
 
 // Helper function to format timestamp for display
 fn format_timestamp(timestamp: u64) -> String {
-    use std::time::{UNIX_EPOCH, Duration};
-    
+    use std::time::{Duration, UNIX_EPOCH};
+
     match UNIX_EPOCH.checked_add(Duration::from_secs(timestamp)) {
         Some(_datetime) => {
             format!("Unix timestamp: {} (Date: {})", timestamp, timestamp)
-        },
+        }
         None => "Invalid timestamp".to_string(),
     }
 }
@@ -139,28 +137,44 @@ fn main() -> Result<()> {
         .write(&stateroot_journal_bytes)?
         .build()?;
 
+    let start = Instant::now();
     println!("Starting proof generation...");
-    
+
     let opts = ProverOpts::default().with_receipt_kind(ReceiptKind::Groth16);
     let prove_info = default_prover().prove_with_opts(env, GUEST_ELF, &opts)?;
     let receipt = prove_info.receipt;
+    let duration = start.elapsed();
+
     let receipt_bytes = bincode::serialize(&receipt)?;
     std::fs::write("hybrid_credit_score_receipt.bin", receipt_bytes)?;
 
     // Decode final journal
     let journal_struct = JournalData::abi_decode(&receipt.journal.bytes)?;
 
+    println!("{} :Proving time in ms", duration.as_millis());
     println!("\n=== HYBRID CREDIT SCORE RESULTS ===");
     println!(" Final Hybrid Score: {}", journal_struct.score);
     println!(" TradFi Server: '{}'", journal_struct.serverName);
-    println!(" State Root Provider: '{}'", journal_struct.stateRootProvider);
+    println!(
+        " State Root Provider: '{}'",
+        journal_struct.stateRootProvider
+    );
     println!(" Block Number: {}", journal_struct.blockNumber);
-    println!(" TradFi Nullifier: 0x{}", hex::encode(&journal_struct.tradfiNullifier));
-    println!(" TradFi Date Timestamp: {}", format_timestamp(journal_struct.tradfiDateTimestamp));
+    println!(
+        " TradFi Nullifier: 0x{}",
+        hex::encode(&journal_struct.tradfiNullifier)
+    );
+    println!(
+        " TradFi Date Timestamp: {}",
+        format_timestamp(journal_struct.tradfiDateTimestamp)
+    );
     println!(" User Address: {:?}", journal_struct.userAddress);
     println!(" Nullifiers Count: {}", journal_struct.allNullifiers.len());
     if !journal_struct.allNullifiers.is_empty() {
-        println!(" First Nullifier: 0x{}", hex::encode(&journal_struct.allNullifiers[0]));
+        println!(
+            " First Nullifier: 0x{}",
+            hex::encode(&journal_struct.allNullifiers[0])
+        );
     }
 
     // Convert to contract's JournalData type
@@ -169,8 +183,8 @@ fn main() -> Result<()> {
         serverName: journal_struct.serverName,
         stateRootProvider: journal_struct.stateRootProvider,
         blockNumber: journal_struct.blockNumber,
-        tradfiNullifier: journal_struct.tradfiNullifier,                 
-        tradfiDateTimestamp: journal_struct.tradfiDateTimestamp, 
+        tradfiNullifier: journal_struct.tradfiNullifier,
+        tradfiDateTimestamp: journal_struct.tradfiDateTimestamp,
         userAddress: journal_struct.userAddress,
         allNullifiers: journal_struct.allNullifiers,
     };
@@ -178,16 +192,18 @@ fn main() -> Result<()> {
     // Submit to contract
     let seal = encode_seal(&receipt)?;
     let wallet = EthereumWallet::from(args.eth_wallet_private_key);
-    let provider = ProviderBuilder::new().wallet(wallet).connect_http(args.rpc_url);
+    let provider = ProviderBuilder::new()
+        .wallet(wallet)
+        .connect_http(args.rpc_url);
     let contract = ICreditScore::new(args.contract, provider);
 
     println!("\n=== SUBMITTING TO BLOCKCHAIN ===");
     println!(" About to call submitR0CreditScore...");
     println!(" Contract Address: {:?}", args.contract);
-    
+
     let runtime = tokio::runtime::Runtime::new()?;
     let call = contract.submitR0CreditScore(contract_journal_data, seal.into());
-    
+
     let pending_tx = runtime.block_on(call.send())?;
     let tx_receipt = runtime.block_on(pending_tx.get_receipt())?;
 
@@ -198,3 +214,4 @@ fn main() -> Result<()> {
 
     Ok(())
 }
+

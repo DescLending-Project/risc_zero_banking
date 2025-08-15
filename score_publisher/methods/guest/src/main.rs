@@ -1,32 +1,31 @@
 #![no_std]
 #![no_main]
 extern crate alloc;
-use alloc::{string::{String, ToString}, vec::Vec, format};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
+use alloy_sol_types::SolValue;
+use defi_inputs_serializer::DefiProofOutput;
+use ethereum_types::{H256, U256};
 use risc0_zkvm::guest::env;
 use risc0_zkvm::serde::from_slice;
+use score_calculation::{calculate_credit_score, validate_input, CreditInput, TrustLevel};
 use serde::{Deserialize, Serialize};
-use ethereum_types::{H256, U256};
-use alloy_sol_types::{SolValue};
-use score_calculation::{
-    CreditInput, TrustLevel, calculate_credit_score, validate_input
-};
-use defi_inputs_serializer::DefiProofOutput;
 
 risc0_zkvm::guest::entry!(main);
 
 const TRADFI_PROOF_IMAGE_ID: [u32; 8] = [
-    0x7bd6867a, 0xd6e5068c, 0x66cc3bad, 0x5bd072c9,
-    0x4475f55a, 0x6e0c7d62, 0xb70bbab8, 0x0cc197d3,
+    0x7bd6867a, 0xd6e5068c, 0x66cc3bad, 0x5bd072c9, 0x4475f55a, 0x6e0c7d62, 0xb70bbab8, 0x0cc197d3,
 ];
 
 const DEFI_PROOF_IMAGE_ID: [u32; 8] = [
-    0xe16ab6b5, 0x2e571f2c, 0xaa1e7950, 0x5b561197, 
-    0x49b2cc20, 0x5d11f15d, 0xfd644e36, 0xc93d9bf2,
+    0xe16ab6b5, 0x2e571f2c, 0xaa1e7950, 0x5b561197, 0x49b2cc20, 0x5d11f15d, 0xfd644e36, 0xc93d9bf2,
 ];
 
 const STATEROOT_PROOF_IMAGE_ID: [u32; 8] = [
-    0x22f9ac41, 0x9e147230, 0x3154b99c, 0x20d8f252,
-    0xa4a65250, 0xb37a6d9e, 0x5713d16e, 0xd320b0f3,
+    0x22f9ac41, 0x9e147230, 0x3154b99c, 0x20d8f252, 0xa4a65250, 0xb37a6d9e, 0x5713d16e, 0xd320b0f3,
 ];
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,8 +33,8 @@ struct VerificationOutput {
     is_valid: bool,
     server_name: String,
     score: Option<u64>,
-    user_id_hash: Option<String>, 
-    tradfi_date_timestamp: Option<u64>, 
+    user_id_hash: Option<String>,
+    tradfi_date_timestamp: Option<u64>,
     error: Option<String>,
 }
 
@@ -50,104 +49,112 @@ struct StateRootOutput {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct HybridCreditScore {
-    score: u64,  
+    score: u64,
     server_name: String,
     state_root_provider: String,
     block_number: u64,
     tradfi_nullifier: H256,
-    tradfi_date_timestamp: u64, 
-    user_address: [u8; 20],  
+    tradfi_date_timestamp: u64,
+    user_address: [u8; 20],
     all_nullifiers: Vec<H256>,
 }
 
 fn bytes32_vec_to_h256_vec(bytes_vec: Vec<[u8; 32]>) -> Vec<H256> {
-    bytes_vec.into_iter().map(|bytes| H256::from(bytes)).collect()
+    bytes_vec
+        .into_iter()
+        .map(|bytes| H256::from(bytes))
+        .collect()
 }
 
 fn parse_block_number(block_number_str: &Option<String>) -> Result<u64, String> {
     match block_number_str {
-        Some(s) => {
-            u64::from_str_radix(s.trim_start_matches("0x"), 16)
-                .map_err(|_| format!("Invalid block number format: {}", s))
-        }
+        Some(s) => u64::from_str_radix(s.trim_start_matches("0x"), 16)
+            .map_err(|_| format!("Invalid block number format: {}", s)),
         None => Err("Block number not provided".to_string()),
     }
 }
 
 fn hex_string_to_h256(hex_str: &str) -> Result<H256, String> {
     let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-    
+
     if hex_str.len() > 64 {
         return Err("Hex string too long for H256".to_string());
     }
-    
+
     let padded = format!("{:0<64}", hex_str);
-    
+
     match hex::decode(&padded) {
         Ok(bytes) if bytes.len() == 32 => {
             let mut array = [0u8; 32];
             array.copy_from_slice(&bytes);
             Ok(H256::from(array))
-        },
+        }
         Ok(_) => Err("Invalid hex string length".to_string()),
         Err(e) => Err(format!("Failed to decode hex: {}", e)),
     }
 }
 
-
-
 fn validate_state_root_consistency(
     defi_data: &DefiProofOutput,
     stateroot_data: &StateRootOutput,
 ) -> Result<(), String> {
-    let stateroot_from_provider = stateroot_data.state_root.as_ref()
+    let stateroot_from_provider = stateroot_data
+        .state_root
+        .as_ref()
         .ok_or("State root not provided by state root proof")?;
-    
+
     let defi_state_root_hex = format!("0x{:x}", defi_data.trusted_state_root);
-    
-    let normalized_provider = stateroot_from_provider.trim_start_matches("0x").to_lowercase();
+
+    let normalized_provider = stateroot_from_provider
+        .trim_start_matches("0x")
+        .to_lowercase();
     let normalized_defi = defi_state_root_hex.trim_start_matches("0x").to_lowercase();
-    
+
     if normalized_provider != normalized_defi {
         return Err(format!(
-            "State root mismatch: provider={}, defi={}", 
-            normalized_provider, 
-            normalized_defi
+            "State root mismatch: provider={}, defi={}",
+            normalized_provider, normalized_defi
         ));
     }
-    
+
     Ok(())
 }
 
 fn validate_tradfi_data(tradfi_data: &VerificationOutput) -> Result<(), String> {
     if !tradfi_data.is_valid {
-        return Err(format!("TradFi verification failed: {:?}", tradfi_data.error));
+        return Err(format!(
+            "TradFi verification failed: {:?}",
+            tradfi_data.error
+        ));
     }
-    
+
     if tradfi_data.score.is_none() {
         return Err("TradFi score not provided".to_string());
     }
-    
+
     if tradfi_data.user_id_hash.is_none() {
         return Err("TradFi user ID hash not provided".to_string());
     }
-    
+
     Ok(())
 }
 
 fn validate_stateroot_data(stateroot_data: &StateRootOutput) -> Result<(), String> {
     if !stateroot_data.is_valid {
-        return Err(format!("State root verification failed: {:?}", stateroot_data.error));
+        return Err(format!(
+            "State root verification failed: {:?}",
+            stateroot_data.error
+        ));
     }
-    
+
     if stateroot_data.state_root.is_none() {
         return Err("State root not provided".to_string());
     }
-    
+
     if stateroot_data.block_number.is_none() {
         return Err("Block number not provided".to_string());
     }
-    
+
     Ok(())
 }
 
@@ -157,11 +164,12 @@ fn calculate_hybrid_score_with_lib(
     stateroot_data: &StateRootOutput,
 ) -> Result<HybridCreditScore, String> {
     let current_block = parse_block_number(&stateroot_data.block_number)?;
-    
+
     // Use tradfi_date_timestamp as the current timestamp for score calculation
-    let current_timestamp = tradfi_data.tradfi_date_timestamp
+    let current_timestamp = tradfi_data
+        .tradfi_date_timestamp
         .ok_or("TradFi date timestamp is required for score calculation")?;
-    
+
     // Convert TradFi score from u64 to u16 (as the lib uses u16)
     let tradfi_score = tradfi_data.score.map(|s| {
         if s > 850 {
@@ -172,7 +180,7 @@ fn calculate_hybrid_score_with_lib(
             s as u16
         }
     });
-    
+
     // Create credit input using the library's expected structure
     let credit_input = CreditInput {
         first_interaction_timestamp: defi_data.first_interaction_timestamp,
@@ -190,8 +198,10 @@ fn calculate_hybrid_score_with_lib(
     let final_score = calculate_credit_score(&credit_input);
 
     let tradfi_nullifier = hex_string_to_h256(
-        tradfi_data.user_id_hash.as_ref()
-            .ok_or("TradFi user ID hash missing")?
+        tradfi_data
+            .user_id_hash
+            .as_ref()
+            .ok_or("TradFi user ID hash missing")?,
     )?;
 
     Ok(HybridCreditScore {
@@ -206,24 +216,25 @@ fn calculate_hybrid_score_with_lib(
     })
 }
 
-use alloy_sol_types::{sol};
 use alloy_sol_types::private::FixedBytes;
+use alloy_sol_types::sol;
 
 sol! {
     struct JournalData {
         uint64 score;
         string serverName;
-        string stateRootProvider; 
+        string stateRootProvider;
         uint64 blockNumber;
-        bytes32 tradfiNullifier;          
-        uint64 tradfiDateTimestamp;  
+        bytes32 tradfiNullifier;
+        uint64 tradfiDateTimestamp;
         address userAddress;
         bytes32[] allNullifiers;
     }
 }
 
 fn commit_hybrid_score(hybrid: &HybridCreditScore) -> Result<(), String> {
-    let nullifiers_fixed_bytes: Vec<FixedBytes<32>> = hybrid.all_nullifiers
+    let nullifiers_fixed_bytes: Vec<FixedBytes<32>> = hybrid
+        .all_nullifiers
         .iter()
         .map(|h| FixedBytes::<32>::from(h.0))
         .collect();
@@ -237,17 +248,18 @@ fn commit_hybrid_score(hybrid: &HybridCreditScore) -> Result<(), String> {
         stateRootProvider: hybrid.state_root_provider.clone(),
         blockNumber: hybrid.block_number,
         tradfiNullifier: FixedBytes::<32>::from(hybrid.tradfi_nullifier.0),
-        tradfiDateTimestamp: hybrid.tradfi_date_timestamp, 
+        tradfiDateTimestamp: hybrid.tradfi_date_timestamp,
         userAddress: user_address_alloy,
         allNullifiers: nullifiers_fixed_bytes,
     };
-    
+
     let encoded_journal = journal_struct.abi_encode();
     env::commit_slice(&encoded_journal);
     Ok(())
 }
 
 fn main() {
+    let start = env::cycle_count();
     // Read journal bytes from all three proofs
     let tradfi_journal_bytes: Vec<u8> = env::read();
     let defi_journal_bytes: Vec<u8> = env::read();
@@ -256,29 +268,26 @@ fn main() {
     // Verify all three proofs
     env::verify(TRADFI_PROOF_IMAGE_ID, &tradfi_journal_bytes)
         .expect("TradFi proof verification failed");
-    
-    env::verify(DEFI_PROOF_IMAGE_ID, &defi_journal_bytes)
-        .expect("DeFi proof verification failed");
-    
+
+    env::verify(DEFI_PROOF_IMAGE_ID, &defi_journal_bytes).expect("DeFi proof verification failed");
+
     env::verify(STATEROOT_PROOF_IMAGE_ID, &stateroot_journal_bytes)
         .expect("State root proof verification failed");
 
     // Decode all verified journals
-    let tradfi_data: VerificationOutput = from_slice(&tradfi_journal_bytes)
-        .expect("Failed to deserialize TradFi data");
-    
-    let defi_data: DefiProofOutput = from_slice(&defi_journal_bytes)
-        .expect("Failed to deserialize DeFi data");
-    
-    let stateroot_data: StateRootOutput = from_slice(&stateroot_journal_bytes)
-        .expect("Failed to deserialize state root data");
+    let tradfi_data: VerificationOutput =
+        from_slice(&tradfi_journal_bytes).expect("Failed to deserialize TradFi data");
+
+    let defi_data: DefiProofOutput =
+        from_slice(&defi_journal_bytes).expect("Failed to deserialize DeFi data");
+
+    let stateroot_data: StateRootOutput =
+        from_slice(&stateroot_journal_bytes).expect("Failed to deserialize state root data");
 
     // Validate all data integrity
-    validate_tradfi_data(&tradfi_data)
-        .expect("TradFi data validation failed");
-    
-    validate_stateroot_data(&stateroot_data)
-        .expect("State root data validation failed");
+    validate_tradfi_data(&tradfi_data).expect("TradFi data validation failed");
+
+    validate_stateroot_data(&stateroot_data).expect("State root data validation failed");
 
     // Validate state root consistency between proofs
     validate_state_root_consistency(&defi_data, &stateroot_data)
@@ -289,6 +298,9 @@ fn main() {
         .expect("Failed to calculate hybrid credit score");
 
     // Commit the final score
-    commit_hybrid_score(&hybrid_score)
-        .expect("Failed to commit hybrid score");
+    commit_hybrid_score(&hybrid_score).expect("Failed to commit hybrid score");
+
+    let total_cycles = env::cycle_count() - start;
+    env::log(&format!("{}: Total Cycyles", total_cycles));
 }
+
