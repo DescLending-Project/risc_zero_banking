@@ -9,12 +9,12 @@ use bincode;
 use hex;
 use risc0_zkvm::guest::env;
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
 use tlsn_core::{
     presentation::{Presentation, PresentationOutput},
     signing::VerifyingKey as TlsnVerifyingKey,
     CryptoProvider,
 };
-use sha3::{Digest, Keccak256};
 
 risc0_zkvm::guest::entry!(main);
 
@@ -27,8 +27,8 @@ struct VerificationOutput {
     is_valid: bool,
     server_name: String,
     score: Option<u64>,
-    user_id_hash: Option<String>, 
-    tradfi_date_timestamp: Option<u64>, 
+    user_id_hash: Option<String>,
+    tradfi_date_timestamp: Option<u64>,
     error: Option<String>,
 }
 
@@ -69,6 +69,7 @@ struct ScoreData {
 }
 
 fn main() {
+    let start = env::cycle_count();
     let proof_json: String = env::read();
     let mut output = VerificationOutput {
         is_valid: false,
@@ -146,15 +147,17 @@ fn main() {
             if let Ok(api_response) = serde_json::from_str::<ApiResponse>(response_text) {
                 // Extract score
                 output.score = Some(api_response.data.score.value);
-                
+
                 // Hash user ID for privacy
                 output.user_id_hash = Some(hash_user_id(&api_response.data.user_id));
-                
+
                 // Convert timestamp to date-only unix timestamp
-                output.tradfi_date_timestamp = parse_date_to_unix_timestamp(&api_response.timestamp);
-                
+                output.tradfi_date_timestamp =
+                    parse_date_to_unix_timestamp(&api_response.timestamp);
+
                 // Convert timestamp to unix timestamp
-                output.tradfi_date_timestamp = parse_date_to_unix_timestamp(&api_response.timestamp);
+                output.tradfi_date_timestamp =
+                    parse_date_to_unix_timestamp(&api_response.timestamp);
             } else {
                 // Fallback: try to extract score the old way
                 if let Some(val) = response_text.split("value\":").nth(1) {
@@ -165,14 +168,14 @@ fn main() {
                         .parse()
                         .ok();
                 }
-                
+
                 // Try to extract and hash userId
                 if let Some(user_part) = response_text.split("\"userId\":\"").nth(1) {
                     if let Some(user_id) = user_part.split("\"").next() {
                         output.user_id_hash = Some(hash_user_id(user_id));
                     }
                 }
-                
+
                 // Try to extract timestamp and convert to date-only
                 if let Some(ts_part) = response_text.split("\"timestamp\":\"").nth(1) {
                     if let Some(timestamp) = ts_part.split("\"").next() {
@@ -184,6 +187,8 @@ fn main() {
     }
 
     env::commit(&output);
+    let total_cycles = env::cycle_count() - start;
+    env::log(&format!("{}: Total Cycyles", total_cycles));
 }
 
 // Hash user ID with Keccak256 for privacy - using RISC Zero optimized precompile
@@ -204,40 +209,40 @@ fn parse_date_to_unix_timestamp(iso_timestamp: &str) -> Option<u64> {
 
     let date_part = &iso_timestamp[0..10]; // "2025-07-21"
     let mut date_parts = date_part.split('-');
-    
+
     let year: u32 = date_parts.next()?.parse().ok()?;
     let month: u32 = date_parts.next()?.parse().ok()?;
     let day: u32 = date_parts.next()?.parse().ok()?;
-    
+
     // Validate reasonable ranges
     if year < 1970 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31 {
         return None;
     }
-    
+
     // Days since Unix epoch (Jan 1, 1970)
     let mut days_since_epoch = 0u64;
-    
+
     // Add days for complete years
     for y in 1970..year {
         days_since_epoch += if is_leap_year(y) { 366 } else { 365 };
     }
-    
+
     // Days in each month
     let mut days_in_months = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     if is_leap_year(year) {
         days_in_months[1] = 29; // February in leap year
     }
-    
+
     // Add days for complete months in current year
     for m in 1..month {
         if m <= 12 {
             days_since_epoch += days_in_months[(m - 1) as usize] as u64;
         }
     }
-    
+
     // Add remaining days (subtract 1 because day 1 of month = 0 additional days)
     days_since_epoch += (day - 1) as u64;
-    
+
     // Convert days to seconds (date at 00:00:00 UTC)
     Some(days_since_epoch * 24 * 60 * 60)
 }
@@ -245,3 +250,4 @@ fn parse_date_to_unix_timestamp(iso_timestamp: &str) -> Option<u64> {
 fn is_leap_year(year: u32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
+

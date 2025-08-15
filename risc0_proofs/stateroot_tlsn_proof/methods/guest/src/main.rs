@@ -48,6 +48,7 @@ struct MetaData {
 }
 
 fn main() {
+    let start = env::cycle_count();
     let proof_json: String = env::read();
 
     let mut output = VerificationOutput {
@@ -128,7 +129,7 @@ fn main() {
                 }
             }
 
-            // Extract block number 
+            // Extract block number
             if let Some(number_start) = s.find("\"number\":\"") {
                 let start_pos = number_start + 10; // Length of "number":""
                 if let Some(end_pos) = s[start_pos..].find("\"") {
@@ -140,9 +141,13 @@ fn main() {
 
     // Validate that we extracted both values
     if output.state_root.is_none() || output.block_number.is_none() {
-        output.error = Some("Failed to extract stateRoot or block number from response".to_string());
+        output.error =
+            Some("Failed to extract stateRoot or block number from response".to_string());
         output.is_valid = false;
     }
 
     env::commit(&output);
+    let total_cycles = env::cycle_count() - start;
+    env::log(&format!("{}: Total Cycyles", total_cycles));
 }
+
