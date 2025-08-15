@@ -36,7 +36,15 @@ fn main() {
     let total_eth_balance = total_wei_balance / eth_divisor;
 
     now = env::cycle_count();
-    eprintln!("{}: verify_all_account_proofs ", now - last);
+    eprintln!("========================");
+    let verify_all_account_proofs_cycles = env::cycle_count().clone();
+    eprintln!(
+        "{}: verify_all_account_proofs ",
+        verify_all_account_proofs_cycles
+    );
+
+    // #[cfg(evaluate_cycles)]
+
     last = now;
 
     // 2. Verifying merkle proof of lending contract to ensure that defi data came from our
@@ -49,14 +57,19 @@ fn main() {
     )
     .unwrap()
     .unwrap();
-    now = env::cycle_count();
-    eprintln!("{}: verify contract merkle proof", now - last);
-    last = now;
-
     //2.2 Chcking if contract address is correct
     assert!(contract_merkle_proof
         .address
         .eq(contract_address.as_bytes()));
+    now = env::cycle_count();
+
+    let verify_contract_proof_cycles = now - last;
+    eprintln!(
+        "{}: verify contract merkle proof",
+        verify_contract_proof_cycles
+    );
+
+    last = now;
 
     // 3. Verifying merklpe proofs of all storge slots of the user and retriving their values
     let user_history_data = verify_all_storage_proofs(
@@ -67,7 +80,12 @@ fn main() {
     assert!(user_history_data.len() == 3, "User Histor data mismatch");
 
     now = env::cycle_count();
-    eprintln!("{}: verify_all_storage_proofs", now - last);
+    let verify_all_storage_proofs_cycles = now - last;
+    eprintln!(
+        "{}: verify_all_storage_proofs",
+        verify_all_storage_proofs_cycles
+    );
+
     last = now;
 
     // 4. verify the signatures
@@ -76,7 +94,9 @@ fn main() {
     assert!(signatures_valid, "Singatures Unvalid");
 
     now = env::cycle_count();
-    eprintln!("{}: verify_all_signatures", now - last);
+    let verify_all_signatures_cycles = now - last;
+    eprintln!("{}: verify_all_signatures", verify_all_signatures_cycles);
+
     last = now;
 
     // 5. verify the nullifers
@@ -85,10 +105,14 @@ fn main() {
     assert!(nullifiers_valid, "Nullifiers Unvalid");
 
     now = env::cycle_count();
-    eprintln!("{}: verify_all_nullifiers", now - last);
+    let verify_all_nullifiers_cycles = now - last;
+    eprintln!("{}: verify_all_nullifiers", verify_all_nullifiers_cycles);
+
     last = now;
 
-    eprintln!("{}: Total Cycyles", now - start);
+    let total_cycles = now.clone() - start.clone();
+    eprintln!("{}: Total Cycyles", total_cycles);
+    eprintln!("========================");
 
     let output: DefiProofOutput = DefiProofOutput {
         all_nullifiers,

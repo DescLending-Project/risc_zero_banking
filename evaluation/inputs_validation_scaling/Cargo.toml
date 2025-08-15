@@ -1,0 +1,20 @@
+[package]
+name = "inputs_validation_scaling"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = {version = "1.0"}
+tokio = { version = "1.28", features = ["full"] }
+ethers = { version = "2.0", features = ["ws", "rustls"] }
+eth_utils = { path = "../../lib/core/eth_utils"}
+fetch_merkle = { path = "../../lib/core/fetch_merkle/",default-features = false }
+merkle_verifier_core = { path = "../../lib/core/merkle_verifier_core/",default-features = false }
+signature_verifier_core = { path = "../../lib/core/signature_verifier_core/",default-features = false }
+nullifier_verifier_core = { path = "../../lib/core/nullifier_verifier_core/",default-features = false }
+loaders = { path = "../../lib/core/loaders/",default-features = false }
+sha3 = { version = "0.10", default-features = false }
+ethereum-types = { version = "0.14", default-features = false, features = ["serialize", "rlp"] }
+rlp = { version = "0.5", default-features = false }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
