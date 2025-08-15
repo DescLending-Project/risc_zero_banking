@@ -59,10 +59,6 @@ RISC0_USE_DOCKER=1 cargo build --release
 Before running the publisher, ensure you have **deployed the required smart contracts** located in the [`Solidity/`](../solidity) directory.
 Note: Make sure your local Ethereum node (e.g., Hardhat or Anvil) is running and that the contract address and private key are correct.
 
-Also you need to export your private key here as well to call the contract:
-```bash
-export ETH_WALLET_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-```
 To run with Bonsai export this before:
 ```bash
 export BONSAI_API_KEY="<BONSAI_API_KEY>"
