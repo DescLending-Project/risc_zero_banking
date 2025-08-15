@@ -1,0 +1,12 @@
+{ 
+  "guest_metrics":{
+    "verify_all_account_proofs_cycles": 1771252,
+    "verify_contract_proof_cycles": 134046,
+    "verify_all_storage_proofs_cycles": 222729,
+    "verify_all_signatures_cycles": 5037313,
+    "verify_all_nullifiers_cycles": 12703,
+    "total_cycles": 6439813
+  },
+    "proving_time": 1330563,
+    "accounts_count": 8
+}
