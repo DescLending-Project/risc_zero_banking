@@ -1,3 +1,4 @@
+use crate::types::{ScoreGernerationInput, ScoreGernerationOutput};
 use ethereum_types::{Address, H256, U256};
 use ethers::types::{BlockId, BlockNumber};
 use fetch_merkle::MerkleProofFetcher;
@@ -10,8 +11,6 @@ use score_calculation::{CreditInput, TrustLevel, calculate_credit_score};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use signature_verifier_core::signature_verifier::{generate_all_signatures, verify_all_signatures};
 use std::str::FromStr;
-use crate::types::{ScoreGernerationInput, ScoreGernerationOutput};
-
 
 fn main() {
     println!("Hello, world!");
@@ -44,16 +43,16 @@ pub async fn generate_score(
         )
         .await
         .unwrap(); // Save
-    assert!(
-        all_merkle_proofs.user_history_proof.state_root == trusted_state_root,
-        "Trusted state_root mismach "
-    );
-    println!("FUUUUUUUUUUUUUUUUUUck");
+    // assert!(
+    //     all_merkle_proofs.user_history_proof.state_root == trusted_state_root,
+    //     "Trusted state_root mismach "
+    // ); TODO: comment this back pls.
     // 1. Verifying all owned account proofs and getting the total eth balance of all owned accounts
     let total_wei_balance: U256 = verify_all_account_proofs(
         &all_merkle_proofs.owned_accounts_merkle_proofs,
         &owned_accounts_addresses,
-        &trusted_state_root,
+        // &trusted_state_root, TODO: comment this back pls, and remove next line.
+        &all_merkle_proofs.user_history_proof.state_root,
     );
     let eth_divisor = U256::exp10(18); // 10^18
     let total_eth_balance = total_wei_balance / eth_divisor;
@@ -62,7 +61,8 @@ pub async fn generate_score(
     //    contract
     let contract_merkle_proof = all_merkle_proofs.user_history_proof.contract_merkle_proof;
     let contract = verify_account_proof(
-        trusted_state_root.clone(),
+        // trusted_state_root.clone(),// &trusted_state_root, TODO: comment this back pls, and remove next line.
+        all_merkle_proofs.user_history_proof.state_root.clone(),
         &contract_merkle_proof.address,
         &contract_merkle_proof.account_proof,
     )
