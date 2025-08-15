@@ -31,15 +31,7 @@ First, start Anvil in a separte Shell to get the env vars
 ```shell
 anvil
 ```
-copy the env vars from anvil and export in your other shell
-```shell
-export CONTRACT_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
-export CHAIN_ID=31337
-export RPC_URL=http://localhost:8545
-export ETH_WALLET_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-```
-
-or source the variables from .local_env file
+Source the variables from .local_env file
 ```shell
 source .local_env
 ```
