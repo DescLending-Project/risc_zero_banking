@@ -1,11 +1,54 @@
-# RISC Zero Rust Starter Template
+# Defi inputs validation proof
+This proof has 2 main task: 1. Verify that the borrower is the owner of provided accounts for score calculation 2. Verify and ensure the integrity of blockchain orginated score calculation inputs  
+Dependednt on RUSTFLAGS="--cfg fetch_merkle_proofs" the host program will fetch all needed merkle proofs from specified node provider address(api_url) or it will use data specified by --all-merkle-proofs-path
+The guest program gets following inputs:
+```rust
+pub struct DefiProofInput {
+    pub all_signatures: Vec<[u8; 65]>,
+    pub all_nullifiers: Vec<[u8; 32]>,
+    pub owned_accounts_addresses: Vec<Address>,
+    pub owned_accounts_merkle_proofs: Vec<AccountMerkleProof>,
+    pub storage_merkle_proofs: Vec<StorageMerkleProof>,
+    pub contract_merkle_proof: AccountMerkleProof,
+    pub contract_address: Address,
+    pub user_address: Address,
+    pub message: String,
+    pub trusted_state_root: H256,
+}
 
-Welcome to the RISC Zero Rust Starter Template! This template is intended to
-give you a starting point for building a project using the RISC Zero zkVM.
-Throughout the template (including in this README), you'll find comments
-labelled `TODO` in places where you'll need to make changes. To better
-understand the concepts behind this template, check out the [zkVM
-Overview][zkvm-overview].
+```
+We first verify the all_signatures and their relation to owned_accounts_addresses to fulfill task 1.
+We also verify the relation between the accounts nullifiers(all_nullifers) and the owned_accounts_addresses.
+Next the guest program checks the integrity of blockchain  orginated data with merkle_proofs verification by:
+1. Verifying the existence and  integrity of owned_accounts and their ballancess.
+2. Verifying  the existence and integrity of the lending contract 
+3. Verifying  the existence and integrity of user interactions data coming from lending contract
+
+
+Guest program stores following struct that is stored afterwards in receipt binarry that can be used afterwards by the nesting proof:
+```rust
+pub struct DefiProofOutput {
+    #[serde(
+        serialize_with = "serialize_nullifiers",
+        deserialize_with = "deserialize_nullifiers"
+    )]
+    pub all_nullifiers: Vec<[u8; 32]>,
+    pub contract_address: Address,
+    pub user_address: Address,
+    pub message: String,
+    pub total_eth_balance: U256,
+    // Defi Payment history
+    pub first_interaction_timestamp: U256,
+    pub liquidations: U256,
+    pub on_time_payments: U256,
+    pub trusted_state_root: H256,
+}
+```
+NOTE: 
+1. trusted_state_root will be checked in nesting proof against state_root fetched with via tlsn, ensuring its integrity. The nesting proof also outputs the orgin url of the state_root that gets checked on chain against an list of accepted node providers. The node provider URL (at least in case of ALCHEMY) determinse the source Blockchain of the data. 
+2. contract_address is the address of the lending contract and it gets checked on chain 
+
+
 
 ## Quick Start
 
@@ -13,25 +56,38 @@ First, make sure [rustup] is installed. The
 [`rust-toolchain.toml`][rust-toolchain] file will be used by `cargo` to
 automatically install the correct version.
 
-To build all methods and execute the method within the zkVM, run the following
+To build all methods and execute the method within the zkVM in DEV mode, run the following
 command:
 
 ```bash
-cargo run
+RISC0_DEV_MODE=1 cargo run  -- \
+--all-signatures-path ./defi_inputs/signatures.json \
+--all-nullifiers-path ./defi_inputs/nullifiers.json \
+--all-merkle-proofs-path ./defi_inputs/all_merkle_proofs.json \
+--user-owned-addresses-path ./defi_inputs/user_owned_addresses.json \
+--proof-name unvalid_defi_inputs_receipt \
+--bin-output-path ./receipts/5_accounts_proof/ \
 ```
 
-This is an empty template, and so there is no expected output (until you modify
-the code).
+Depenedent on the RUSTFLAGS="--cfg fetch_merkle_proofs" you can execute the proof with locally stored merkle proofs(upper command) or you can specify the node provider url and the address of the lending contract.
+The receipt will be stored in --bin-output-path under --proof-name.
 
-### Executing the Project Locally in Development Mode
 
-During development, faster iteration upon code changes can be achieved by leveraging [dev-mode], we strongly suggest activating it during your early development phase. Furthermore, you might want to get insights into the execution statistics of your project, and this can be achieved by specifying the environment variable `RUST_LOG="[executor]=info"` before running your project.
-
-Put together, the command to run your project in development mode while getting execution statistics is:
 
 ```bash
-RUST_LOG="[executor]=info" RISC0_DEV_MODE=1 cargo run
+RISC0_DEV_MODE=1 RUSTFLAGS="--cfg fetch_merkle_proofs" cargo run  -- \
+--all-signatures-path ./defi_inputs/signatures.json \
+--all-nullifiers-path ./defi_inputs/nullifiers.json \
+--user-owned-addresses-path ./defi_inputs/user_owned_addresses.json \
+--proof-name unvalid_defi_inputs_receipt \
+--bin-output-path ./receipts/5_accounts_proof/ \
+--api-url http://localhost:8545 \
+--contract-address 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
 ```
+
+You you want to generate valid receipt change the RISC0_DEV_MODE to 0
+
+
 
 ### Running Proofs Remotely on Bonsai
 
@@ -39,55 +95,25 @@ _Note: The Bonsai proving service is still in early Alpha; an API key is
 required for access. [Click here to request access][bonsai access]._
 
 If you have access to the URL and API key to Bonsai you can run your proofs
-remotely. To prove in Bonsai mode, invoke `cargo run` with two additional
-environment variables:
+remotely. You need to export the bonsai api key and url first in the terminal:
 
 ```bash
-BONSAI_API_KEY="YOUR_API_KEY" BONSAI_API_URL="BONSAI_URL" cargo run
+export BONSAI_API_KEY="<BONSAI_API_KEY>"
+export BONSAI_API_URL="<BONSAI_API_URL>"
 ```
 
-## How to Create a Project Based on This Template
-
-Search this template for the string `TODO`, and make the necessary changes to
-implement the required feature described by the `TODO` comment. Some of these
-changes will be complex, and so we have a number of instructional resources to
-assist you in learning how to write your own code for the RISC Zero zkVM:
-
-- The [RISC Zero Developer Docs][dev-docs] is a great place to get started.
-- Example projects are available in the [examples folder][examples] of
-  [`risc0`][risc0-repo] repository.
-- Reference documentation is available at [https://docs.rs][docs.rs], including
-  [`risc0-zkvm`][risc0-zkvm], [`cargo-risczero`][cargo-risczero],
-  [`risc0-build`][risc0-build], and [others][crates].
-
-## Directory Structure
-
-It is possible to organize the files for these components in various ways.
-However, in this starter template we use a standard directory structure for zkVM
-applications, which we think is a good starting point for your applications.
-
-```text
-project_name
-├── Cargo.toml
-├── host
-│   ├── Cargo.toml
-│   └── src
-│       └── main.rs                    <-- [Host code goes here]
-└── methods
-    ├── Cargo.toml
-    ├── build.rs
-    ├── guest
-    │   ├── Cargo.toml
-    │   └── src
-    │       └── method_name.rs         <-- [Guest code goes here]
-    └── src
-        └── lib.rs
+Then run the proof in normal mode
+```bash
+RISC0_DEV_MODE=0 cargo run --release -- \
+--all-signatures-path ./defi_inputs/signatures.json \
+--all-nullifiers-path ./defi_inputs/nullifiers.json \
+--all-merkle-proofs-path ./defi_inputs/all_merkle_proofs.json \
+--user-owned-addresses-path ./defi_inputs/user_owned_addresses.json \
+--proof-name valid_defi_inputs_receipt \
+--bin-output-path ./receipts/5_accounts_proof/ \
 ```
 
-## Video Tutorial
 
-For a walk-through of how to build with this template, check out this [excerpt
-from our workshop at ZK HACK III][zkhack-iii].
 
 ## Questions, Feedback, and Collaborations
 

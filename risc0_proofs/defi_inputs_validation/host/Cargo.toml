@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+futures = { version = "0.3", features = ["executor"] }
 bincode     = "1.3"
 methods = { path = "../methods" }
 # risc0-zkvm = { version = "2.3.1", default-features = false, features = ['std','unstable', 'client','prove'] }
@@ -14,4 +15,8 @@ serde = { version = "1.0", default-features = false, features = ["derive"] }
 ethereum-types = "0.14"
 ethers = { version = "2.0", features = ["ws", "rustls"] }
 loaders = { path = "../../../lib/core/loaders/",default-features = false }
+fetch_merkle = { path = "../../../lib/core/fetch_merkle/",default-features = false }
 shared = {path = "../shared/"}
+clap = { version = "4.0", features = ["derive", "env"] }
+serde_json = "1.0"  # for JSON serialization
+tokio = { version = "1.28"}
