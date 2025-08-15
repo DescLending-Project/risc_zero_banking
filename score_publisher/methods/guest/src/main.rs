@@ -8,7 +8,7 @@ use alloc::{
 };
 use alloy_sol_types::SolValue;
 use defi_inputs_serializer::DefiProofOutput;
-use ethereum_types::{H256, U256};
+use ethereum_types::{Address, H256, U256};
 use risc0_zkvm::guest::env;
 use risc0_zkvm::serde::from_slice;
 use score_calculation::{calculate_credit_score, validate_input, CreditInput, TrustLevel};
@@ -17,15 +17,37 @@ use serde::{Deserialize, Serialize};
 risc0_zkvm::guest::entry!(main);
 
 const TRADFI_PROOF_IMAGE_ID: [u32; 8] = [
-    0x7bd6867a, 0xd6e5068c, 0x66cc3bad, 0x5bd072c9, 0x4475f55a, 0x6e0c7d62, 0xb70bbab8, 0x0cc197d3,
+    0xc8b811ba,
+    0xf3d515af,
+    0x72224130,
+    0xc07ab2a3,
+    0xcab6ee6c,
+    0x11738591,
+    0x7c386aca,
+    0xf32fa067,
 ];
 
 const DEFI_PROOF_IMAGE_ID: [u32; 8] = [
-    0xe16ab6b5, 0x2e571f2c, 0xaa1e7950, 0x5b561197, 0x49b2cc20, 0x5d11f15d, 0xfd644e36, 0xc93d9bf2,
+    0xf98d9d31,
+    0x5f239735,
+    0x34780687,
+    0x46ecb8a9,
+    0xefeea591,
+    0xaf482d49,
+    0x17a57eb3,
+    0xad7478b9,
 ];
 
+
 const STATEROOT_PROOF_IMAGE_ID: [u32; 8] = [
-    0x22f9ac41, 0x9e147230, 0x3154b99c, 0x20d8f252, 0xa4a65250, 0xb37a6d9e, 0x5713d16e, 0xd320b0f3,
+    0xf22863eb,
+    0x4e780014,
+    0x5f5c09a8,
+    0xafef2f7f,
+    0x2f9668d8,
+    0x4e9fd747,
+    0x50f92ea4,
+    0x8f1722e8,
 ];
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,7 +77,8 @@ struct HybridCreditScore {
     block_number: u64,
     tradfi_nullifier: H256,
     tradfi_date_timestamp: u64,
-    user_address: [u8; 20],
+    user_address: Address,
+    contract_address: Address,
     all_nullifiers: Vec<H256>,
 }
 
@@ -211,7 +234,8 @@ fn calculate_hybrid_score_with_lib(
         block_number: current_block,
         tradfi_nullifier,
         tradfi_date_timestamp: tradfi_data.tradfi_date_timestamp.unwrap_or(0),
-        user_address: defi_data.user_address.0,
+        user_address: defi_data.user_address,
+        contract_address: defi_data.contract_address,
         all_nullifiers: bytes32_vec_to_h256_vec(defi_data.all_nullifiers.clone()),
     })
 }
@@ -228,6 +252,7 @@ sol! {
         bytes32 tradfiNullifier;
         uint64 tradfiDateTimestamp;
         address userAddress;
+        address contractAddress;
         bytes32[] allNullifiers;
     }
 }
@@ -239,8 +264,9 @@ fn commit_hybrid_score(hybrid: &HybridCreditScore) -> Result<(), String> {
         .map(|h| FixedBytes::<32>::from(h.0))
         .collect();
 
-    // Convert raw bytes to alloy address format
-    let user_address_alloy = alloy_sol_types::private::Address::from(hybrid.user_address);
+    // Convert Ethereum Address to alloy address format
+    let user_address_alloy = alloy_sol_types::private::Address::from(hybrid.user_address.0);
+    let contract_address_alloy = alloy_sol_types::private::Address::from(hybrid.contract_address.0);
 
     let journal_struct = JournalData {
         score: hybrid.score,
@@ -250,6 +276,7 @@ fn commit_hybrid_score(hybrid: &HybridCreditScore) -> Result<(), String> {
         tradfiNullifier: FixedBytes::<32>::from(hybrid.tradfi_nullifier.0),
         tradfiDateTimestamp: hybrid.tradfi_date_timestamp,
         userAddress: user_address_alloy,
+        contractAddress: contract_address_alloy,
         allNullifiers: nullifiers_fixed_bytes,
     };
 
@@ -303,4 +330,3 @@ fn main() {
     let total_cycles = env::cycle_count() - start;
     env::log(&format!("{}: Total Cycyles", total_cycles));
 }
-

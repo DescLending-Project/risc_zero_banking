@@ -33,6 +33,7 @@ contract CreditScore {
         bytes32 tradfiNullifier; 
         uint64 tradfiDateTimestamp;
         address userAddress; 
+        address contractAddress;
         bytes32[] allNullifiers;
     }
 
@@ -62,6 +63,7 @@ contract CreditScore {
     // 1. Checks if if the tradify score and stateRoot came from authorizedSources
     // 2. Checks the fresshnes of the calculated data
     // 3. Check and store  the creditScore related account nullifiers
+    // 4. Validates that the contract address matches the lending contract
     function validateCreditScoreData(
         JournalData calldata journalData
     ) internal {
@@ -73,6 +75,13 @@ contract CreditScore {
             authorizedStateRootProviders[journalData.stateRootProvider],
             "State root provider not authorized"
         );
+        
+        // Validate that the contract address in the proof matches our lending contract
+        require(
+            journalData.contractAddress == lending_contract,
+            "Contract address in proof does not match lending contract"
+        );
+ //NOTE: this is commented out as this function will fail when deployed with anvil
 /*
         require(
             block.timestamp - journalData.tradfiDateTimestamp <=
@@ -219,11 +228,13 @@ contract CreditScore {
             ];
         }
     }
-modifier onlyTimelock() {
+
+    modifier onlyTimelock() {
         require(msg.sender == timelock, "Only timelock can call this function");
         _;
     }
-  function setTimelock(address _timelock) external {
+    
+    function setTimelock(address _timelock) external {
         require(timelock == address(0), "Timelock already set"); // Only allow setting once
         require(_timelock != address(0), "Invalid timelock address");
         timelock = _timelock;

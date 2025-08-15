@@ -73,4 +73,12 @@ cargo run -p host --release -- data/proofHighScore.json
 ```
 - data/proof.json path to TLSNotary proof to be verified.
 
+or run with bonsai:
+```bash
+export BONSAI_API_KEY="<BONSAI_API_KEY>"
+export BONSAI_API_URL="<BONSAI_API_URL>"
 
+RISC0_USE_DOCKER=1 \
+RISC0_DEV_MODE=0 \
+cargo run -p host --release -- data/proofHighScore.json
+```

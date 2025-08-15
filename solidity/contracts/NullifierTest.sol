@@ -27,6 +27,7 @@ contract NullifierTest is Test {
     // Test addresses
     address constant USER1 = address(0x1);
     address constant USER2 = address(0x2);
+    address constant LENDING_CONTRACT = address(0x1); // Same as USER1 for simplicity
 
     function setUp() public {
         mockVerifier = new MockRiscZeroVerifier();
@@ -34,7 +35,7 @@ contract NullifierTest is Test {
         servers[0] = "openbanking-api-826260723607.europe-west3.run.app";
         string[] memory providers = new string[](1);
         providers[0] = "supertrusworthynodeprovider.jermatek.com";
-        creditContract  = new CreditScore(mockVerifier, address(0x1), address(0x1),servers,providers );
+        creditContract  = new CreditScore(mockVerifier, LENDING_CONTRACT, address(0x1), servers, providers);
     }
 
     // Helper to create minimal valid journal data (focusing only on nullifiers)
@@ -52,9 +53,10 @@ contract NullifierTest is Test {
                 serverName: "openbanking-api-826260723607.europe-west3.run.app",
                 stateRootProvider: "supertrusworthynodeprovider.jermatek.com",
                 blockNumber: uint64(block.number),
-                tradfiNullifier: tradfiNullifier,  // Now bytes32 instead of string
+                tradfiNullifier: tradfiNullifier,
                 tradfiDateTimestamp: uint64(block.timestamp),
                 userAddress: userAddress,
+                contractAddress: LENDING_CONTRACT,  // Add the missing contractAddress field
                 allNullifiers: nullifiers
             });
     }
@@ -250,6 +252,29 @@ contract NullifierTest is Test {
             "User tries to use ethAccount for his maxcredit score calculation, that is already in use."
         );
         creditContract.submitTEECreditScore(journalData2, "attestation2");
+    }
+
+    // Test for contract address validation
+    function testAddNullifiers_WrongContractAddress_Reverts() public {
+        bytes32[] memory nullifiers = new bytes32[](1);
+        nullifiers[0] = LENDER_NULLIFIER;
+
+        // Create journal data with wrong contract address
+        CreditScore.JournalData memory journalData = CreditScore.JournalData({
+            score: 750,
+            serverName: "openbanking-api-826260723607.europe-west3.run.app",
+            stateRootProvider: "supertrusworthynodeprovider.jermatek.com",
+            blockNumber: uint64(block.number),
+            tradfiNullifier: keccak256(abi.encodePacked("tradify1")),
+            tradfiDateTimestamp: uint64(block.timestamp),
+            userAddress: USER1,
+            contractAddress: address(0x999), // Wrong contract address
+            allNullifiers: nullifiers
+        });
+
+        vm.prank(USER1);
+        vm.expectRevert("Contract address in proof does not match lending contract");
+        creditContract.submitTEECreditScore(journalData, "attestation");
     }
 
     // ============= DELETE NULLIFIERS TESTS =============

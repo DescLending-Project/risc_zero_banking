@@ -35,9 +35,10 @@ struct JournalData {
     string serverName;               // TradFi API server name (from tradfi_score_tlsn_proof proof)
     string stateRootProvider;        // Blockchain RPC provider (from stateroot_tlsn_proof proof)
     uint64 blockNumber;              // Block number of state root (from stateroot_tlsn_proof proof)
-    string userIdHash;               // Hashed user identifier (from tradfi_score_tlsn_proof proof)
+    bytes32 tradfiNullifier;         // Hashed user identifier (from tradfi_score_tlsn_proof proof)
     uint64 tradfiDateTimestamp;      // Timestamp of TradFi score fetch (from tradfi_score_tlsn_proof proof)
-    string userAddress;              // Blockchain address (from defi_inputs_validation proof)
+    address userAddress;             // Blockchain address (from defi_inputs_validation proof)
+    address contractAddress;         // Adress (Lending Contract) from which DeFi data is fetched
     bytes32[] allNullifiers;         // Account nullifiers (from defi_inputs_validation proof)
 }
 ```
@@ -61,6 +62,11 @@ Note: Make sure your local Ethereum node (e.g., Hardhat or Anvil) is running and
 Also you need to export your private key here as well to call the contract:
 ```bash
 export ETH_WALLET_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+```
+To run with Bonsai export this before:
+```bash
+export BONSAI_API_KEY="<BONSAI_API_KEY>"
+export BONSAI_API_URL="<BONSAI_API_URL>"
 ```
 You can run the pregenerated proof:
 ```bash
@@ -89,6 +95,6 @@ The inner proof are supposed to be provided through the cli
 
 You can extract ImageIDs from the receipts:
 ```bash
-cargo run -p host --bin extract_image_id --release -- receipts/alchemy_stateroot.bin
+cargo run -p host --bin extract_imageid --release -- host/receipts/alchemy_stateroot.bin
 ```
 
