@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import "./CreditScore.sol";
+import "./Creditscore.sol";
 import {IRiscZeroVerifier} from "risc0/IRiscZeroVerifier.sol";
 import {Receipt} from "risc0/IRiscZeroVerifier.sol";
 
@@ -30,7 +30,11 @@ contract NullifierTest is Test {
 
     function setUp() public {
         mockVerifier = new MockRiscZeroVerifier();
-        creditContract = new CreditScore(mockVerifier);
+        string[] memory servers = new string[](1);
+        servers[0] = "openbanking-api-826260723607.europe-west3.run.app";
+        string[] memory providers = new string[](1);
+        providers[0] = "supertrusworthynodeprovider.jermatek.com";
+        creditContract  = new CreditScore(mockVerifier, address(0x1), address(0x1),servers,providers );
     }
 
     // Helper to create minimal valid journal data (focusing only on nullifiers)
@@ -46,7 +50,7 @@ contract NullifierTest is Test {
             CreditScore.JournalData({
                 score: 750,
                 serverName: "openbanking-api-826260723607.europe-west3.run.app",
-                stateRootProvider: "sonic-blaze.g.alchemy.com",
+                stateRootProvider: "supertrusworthynodeprovider.jermatek.com",
                 blockNumber: uint64(block.number),
                 tradfiNullifier: tradfiNullifier,  // Now bytes32 instead of string
                 tradfiDateTimestamp: uint64(block.timestamp),

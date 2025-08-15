@@ -9,6 +9,8 @@ contract CreditScore {
     bytes32 public constant imageId = ImageID.GUEST_ID;
     uint256 public constant TRADIFY_DATA_MAX_AGE = 1 days;
     uint256 public constant BLCOKCHAIN_DATA_MAX_AGE = 7200; // this is about one day
+    address public timelock; // address of the timelock that represents the dao 
+    address public lending_contract; // address of the lending_contract
 
     mapping(string => bool) public authorizedServers;
     mapping(string => bool) public authorizedStateRootProviders;
@@ -41,12 +43,19 @@ contract CreditScore {
         bytes32 tradfiNullifier
     );
 
-    constructor(IRiscZeroVerifier _verifier) {
+    constructor(IRiscZeroVerifier _verifier, address _lending_contract_address , address timelock_address , string[] memory _authorizedServers, string[] memory _authorizedStateRootProviders ) {
         verifier = _verifier;
-        authorizedServers[
-            "openbanking-api-826260723607.europe-west3.run.app"
-        ] = true;
-        authorizedStateRootProviders["supertrusworthynodeprovider.jermatek.com"] = true;
+        lending_contract = _lending_contract_address;
+        timelock= timelock_address;
+        // init authorized Servers
+        for (uint i = 0; i < _authorizedServers.length; i++) {
+                authorizedServers[_authorizedServers[i]] = true;
+        }
+        // init authorized node providers 
+        for (uint i = 0; i < _authorizedStateRootProviders.length; i++) {
+                authorizedStateRootProviders[_authorizedStateRootProviders[i]] = true;
+        }
+
     }
 
     // Validates the content of credit Score journalData
@@ -147,6 +156,7 @@ contract CreditScore {
     }
 
     function markCreditScoreAsUsed(address user) external {
+        require(msg.sender == lending_contract, "Only lending_contract can call this function");
         creditScores[user].isUnused = false;
     }
 
@@ -209,19 +219,28 @@ contract CreditScore {
             ];
         }
     }
+modifier onlyTimelock() {
+        require(msg.sender == timelock, "Only timelock can call this function");
+        _;
+    }
+  function setTimelock(address _timelock) external {
+        require(timelock == address(0), "Timelock already set"); // Only allow setting once
+        require(_timelock != address(0), "Invalid timelock address");
+        timelock = _timelock;
+    }
 
     // need proper auth in deployment
-    function authorizeServer(
+    function authorizeServer (
         string calldata serverName,
         bool authorized
-    ) external {
+    ) external onlyTimelock{
         authorizedServers[serverName] = authorized;
     }
 
     function authorizeStateRootProvider(
         string calldata providerName,
         bool authorized
-    ) external {
+    ) external onlyTimelock{
         authorizedStateRootProviders[providerName] = authorized;
     }
 }
