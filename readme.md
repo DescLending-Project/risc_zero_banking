@@ -2,6 +2,8 @@
 
 A privacy-preserving hybrid credit scoring system built with RISC Zero that combines traditional financial data (FICO-like scores, fetched with TLSNotary) with on-chain DeFi activity to asses creditworthiness without revealing sensitive financial data.
 
+# Start at [Score Publisher](./score_publisher/) to run the system
+
 ## Architecture
 
 ![Architecture Diagram](./workflow.png)
@@ -21,6 +23,7 @@ The system consists of four main components:
 └── solidity/              # Smart contracts for verification and credit score management
 └── tee/                   # Score calculation for tee environment (without risc zero)
 ```
+
 ## Hybrid Credit Score Components
 
 <img src="./score_components.png" alt="Credit Score Components" width="350">
