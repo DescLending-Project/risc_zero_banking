@@ -50,30 +50,24 @@ struct JournalData {
 
 ## NOTE: It is important to always use RISC0_USE_DOCKER=1 to ensure the builds and runs are deterministic
 
-# Build the binaries
+# 1. Build the binaries
+Build the Risc Zero binaries first in order to make sure you have the right ImageID
 ```bash
 RISC0_USE_DOCKER=1 cargo build --release
 ```
-# Run locally with Anvil
+# 2. Setup Anvil Environment
 
-Before running the publisher, ensure you have **deployed the required smart contracts** located in the [`Solidity/`](../solidity) directory.
+Deploy the required smart contracts located in the [`Solidity/`](../solidity) directory.
 Note: Make sure your local Ethereum node (e.g., Hardhat or Anvil) is running and that the contract address and private key are correct.
+
+# 3. Run locally with Anvil
 
 To run with Bonsai export this before:
 ```bash
 export BONSAI_API_KEY="<BONSAI_API_KEY>"
 export BONSAI_API_URL="<BONSAI_API_URL>"
 ```
-You can run the pregenerated proof:
-```bash
-RISC0_USE_DOCKER=1 cargo run --bin submit_bin -- \
-  --chain-id 31337 \
-  --rpc-url http://localhost:8545 \
-  --contract 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0 \
-  --proof-path "./hybrid_credit_score_receipt.bin" \
-  --eth-wallet-private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-```
-Or recompute it:
+Coompute the credit score proof :
 ```bash
 RISC0_USE_DOCKER=1 cargo run -p host --bin host --release -- \
   --tradfi-receipt-path host/receipts/tradfi_score.bin \
